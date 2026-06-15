@@ -1,5 +1,15 @@
 const https = require('https');
 
+// Vercel config: disable default body parser so we can read raw stream,
+// and allow up to 10 MB for multi-page PDF base64 payloads.
+module.exports.config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
+
 const PROMPT =
   'אתה קורא תעודת משלוח סרוקה בעברית.\n' +
   'בתעודה יש טבלה עם העמודות: ש. | מק"ט | תאור מוצר | כמות | מחיר ליחידה | סה"כ מחיר\n' +
@@ -45,11 +55,16 @@ module.exports = async (req, res) => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY לא מוגדר' });
 
+  // Support both Vercel (req.body pre-parsed) and raw stream fallback
   let pages;
   try {
-    const rawBody = await getRawBody(req);
-    const parsed = JSON.parse(rawBody || '{}');
-    pages = parsed.pages;
+    if (req.body && typeof req.body === 'object') {
+      pages = req.body.pages;
+    } else {
+      const rawBody = await getRawBody(req);
+      const parsed = JSON.parse(rawBody || '{}');
+      pages = parsed.pages;
+    }
   } catch (e) {
     return res.status(400).json({ error: 'JSON לא תקין: ' + e.message });
   }
@@ -85,27 +100,12 @@ module.exports = async (req, res) => {
 
     const data = JSON.parse(result.body);
     const text = (data.content?.[0]?.text || '').trim();
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return res.status(200).json({ items: [], raw: text });
+    console.log('[claude-ocr] raw response:', text.slice(0, 500));
 
-    let items;
-    try {
-      items = JSON.parse(jsonMatch[0]);
-    } catch (parseErr) {
-      // נסה לנקות את ה-JSON — החלף מרכאות כפולות בתוך ערכים
-      try {
-        const cleaned = jsonMatch[0]
-          .replace(/:\s*"((?:[^"\\]|\\.)*)"/g, (match, val) => {
-            const fixed = val.replace(/(?<!\\)"/g, '\\"');
-            return ': "' + fixed + '"';
-          });
-        items = JSON.parse(cleaned);
-      } catch {
-        return res.status(200).json({ items: [], raw: text });
-      }
-    }
-    return res.status(200).json({ items });
-  } catch (e) {
-    return res.status(500).json({ error: 'שגיאה פנימית: ' + e.message });
-  }
-};
+    // Extract JSON array — handle plain JSON and markdown code blocks
+    const jsonMatch = text.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/) ||
+                      text.match(/(\[[\s\S]*\])/);
+    const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : null;
+    if (!jsonStr) return res.status(200).json({ items: [], raw: text });
+
+   

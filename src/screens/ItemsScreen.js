@@ -75,7 +75,7 @@ async function extractWithClaude(file, onProgress) {
   let data;
   try { data = await resp.json(); } catch { data = {}; }
   if (!resp.ok || data.error) throw new Error(data.error || `שגיאת שרת ${resp.status}`);
-  return data.items || [];
+  return { items: data.items || [], raw: data.raw || '' };
 }
 
 // ── Delivery note parser ────────────────────────────────────
@@ -237,6 +237,7 @@ export default function ItemsScreen() {
   const [importSaving, setImportSaving] = useState(false);
   const [importProgress, setImportProgress] = useState('');
   const [importError, setImportError] = useState('');
+  const [importRaw, setImportRaw] = useState(''); // תשובת Claude גולמית לדיבאג
 
   const MOV_COLORS = { 'כניסה': '#2E7D32', 'משיכה': '#C62828', 'החזרה': '#1565C0' };
 
@@ -384,12 +385,14 @@ export default function ItemsScreen() {
     setImportStatus('processing');
     setImportProgress('ממיר דפים...');
     setImportError('');
+    setImportRaw('');
     try {
-      const claudeItems = await extractWithClaude(importFile, (page, total) => {
+      const { items: claudeItems, raw } = await extractWithClaude(importFile, (page, total) => {
         if (page === null) setImportProgress('שולח ל-Claude לניתוח...');
         else setImportProgress(`ממיר עמוד ${page} מתוך ${total}...`);
       });
 
+      setImportRaw(raw || '');
       setImportLines(claudeItems.map(p => {
         const mkt = (p['מקט'] || '').toLowerCase().trim();
         const pdfDesc = (p['תיאור'] || '').trim();
@@ -792,6 +795,7 @@ export default function ItemsScreen() {
               setImportLines([]);
               setImportFile(null);
               setImportFileName('');
+              setImportRaw('');
             }}>
               <Text style={s.logCloseBtnText}>✕ סגור</Text>
             </TouchableOpacity>
@@ -839,7 +843,15 @@ export default function ItemsScreen() {
               <View style={s.importCard}>
                 <Text style={s.importSectionTitle}>שלב 3 — אישור כניסות</Text>
                 {importLines.length === 0 ? (
-                  <Text style={s.importHint}>לא זוהו שורות בתעודה. נסה תמונה ברזולוציה גבוהה יותר.</Text>
+                  <View>
+                    <Text style={s.importHint}>לא זוהו שורות בתעודה. נסה תמונה ברזולוציה גבוהה יותר.</Text>
+                    {importRaw ? (
+                      <View style={s.rawDebugBox}>
+                        <Text style={s.rawDebugTitle}>תשובת Claude (לדיבאג):</Text>
+                        <Text style={s.rawDebugText} selectable>{importRaw}</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 ) : (
                   <>
                     <Text style={s.importHint}>
@@ -1027,86 +1039,4 @@ const s = StyleSheet.create({
   },
   sectionToggleText: { textAlign: 'right', color: '#1565C0', fontWeight: '600', fontSize: 13 },
   supplierSection: {
-    borderWidth: 1, borderColor: '#E3F2FD', borderRadius: 8,
-    padding: 12, marginBottom: 10, backgroundColor: '#F8FBFF',
-  },
-  logFullScreen: { flex: 1, backgroundColor: '#F5F7FA' },
-  logHeader: {
-    flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#1565C0', paddingHorizontal: 16, paddingVertical: 14, paddingTop: 44,
-  },
-  logHeaderTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  logCloseBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8 },
-  logCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-
-  // Import
-  importCard: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16,
-    marginBottom: 12, elevation: 1,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3,
-  },
-  importSectionTitle: { fontSize: 16, fontWeight: '700', color: '#1a1a2e', textAlign: 'right', marginBottom: 6 },
-  importHint: { fontSize: 13, color: '#777', textAlign: 'right', marginBottom: 10 },
-  importPickBtn: {
-    borderWidth: 2, borderStyle: 'dashed', borderColor: '#1565C0',
-    borderRadius: 10, padding: 14, alignItems: 'center',
-  },
-  importPickBtnText: { color: '#1565C0', fontWeight: '600', fontSize: 14 },
-  importProcessingRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, padding: 8 },
-  importProcessingText: { color: '#555', fontSize: 14 },
-  importLine: {
-    flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8,
-    borderBottomWidth: 1, borderBottomColor: '#EEE', paddingVertical: 10,
-    borderRadius: 8, paddingHorizontal: 4,
-  },
-  importLineConfirmed: {
-    backgroundColor: '#F1FFF4',
-    borderBottomColor: '#A5D6A7',
-  },
-  importCheckbox: {
-    width: 32, height: 32, borderRadius: 16,
-    borderWidth: 2, borderColor: '#CCC',
-    alignItems: 'center', justifyContent: 'center',
-    marginTop: 2,
-  },
-  importCheckboxDone: {
-    backgroundColor: '#2E7D32', borderColor: '#2E7D32',
-  },
-  importCheckboxText: { fontSize: 18, color: '#999' },
-  importRawRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, marginBottom: 4 },
-  importMktBadge: {
-    fontSize: 10, color: '#1565C0', backgroundColor: '#E3F2FD',
-    borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1,
-  },
-  importAutoTag: { fontSize: 11, color: '#888', fontStyle: 'italic' },
-  importRawText: { fontSize: 12, color: '#888', textAlign: 'right', flex: 1 },
-  importMatchRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
-  importArrow: { fontSize: 14, color: '#999' },
-  importMatchedBadge: {
-    flexDirection: 'row-reverse', alignItems: 'center',
-    backgroundColor: '#E8F5E9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, flex: 1,
-  },
-  importMatchedText: { fontSize: 13, color: '#2E7D32', fontWeight: '600', flex: 1, textAlign: 'right' },
-  importClearMatch: { fontSize: 13, color: '#999' },
-  importItemPicker: { flexDirection: 'row-reverse', gap: 6 },
-  importPickerWrap: { flex: 1 },
-  importPickerSearch: {
-    borderWidth: 1, borderColor: '#CCC', borderRadius: 6,
-    paddingHorizontal: 8, paddingVertical: 4,
-    fontSize: 13, textAlign: 'right', marginBottom: 4, backgroundColor: '#FAFAFA',
-  },
-  importPickerOption: {
-    backgroundColor: '#EEF2FF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5,
-    marginBottom: 3,
-  },
-  importPickerOptionText: { fontSize: 13, color: '#1565C0', textAlign: 'right' },
-  importQtyBlock: { alignItems: 'center', minWidth: 52 },
-  importQtyLabel: { fontSize: 11, color: '#888', marginBottom: 2 },
-  importQtyInput: {
-    borderWidth: 1, borderColor: '#DDD', borderRadius: 6,
-    padding: 6, fontSize: 14, fontWeight: '700', width: 52, textAlign: 'center',
-  },
-  importQtyInputDone: {
-    borderColor: '#2E7D32', color: '#2E7D32',
-  },
-});
+    bord
