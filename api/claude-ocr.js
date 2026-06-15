@@ -1,13 +1,4 @@
-// netlify/functions/claude-ocr.js
-// מקבל דפי PDF/תמונה כ-base64, שולח ל-Claude Vision API, מחזיר JSON נקי של פריטים
-
 const https = require('https');
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Content-Type': 'application/json',
-};
 
 const PROMPT =
   'אתה קורא תעודת משלוח סרוקה בעברית.\n' +
@@ -35,39 +26,40 @@ function httpsPost(options, body) {
   });
 }
 
-exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers: CORS, body: '' };
-  }
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method not allowed' }) };
-  }
+async function getRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', chunk => { data += chunk; });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
+}
+
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'ANTHROPIC_API_KEY לא מוגדר ב-Netlify Environment Variables' }) };
-  }
+  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY לא מוגדר' });
 
   let pages;
   try {
-    const parsed = JSON.parse(event.body || '{}');
+    const rawBody = await getRawBody(req);
+    const parsed = JSON.parse(rawBody || '{}');
     pages = parsed.pages;
   } catch (e) {
-    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'JSON לא תקין: ' + e.message }) };
+    return res.status(400).json({ error: 'JSON לא תקין: ' + e.message });
   }
 
-  if (!pages || pages.length === 0) {
-    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'לא התקבלו תמונות' }) };
-  }
+  if (!pages || pages.length === 0) return res.status(400).json({ error: 'לא התקבלו תמונות' });
 
   try {
-    // בנה content עם כל הדפים כתמונות
     const content = [];
     for (const base64 of pages) {
-      content.push({
-        type: 'image',
-        source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
-      });
+      content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } });
     }
     content.push({ type: 'text', text: PROMPT });
 
@@ -89,30 +81,16 @@ exports.handler = async (event) => {
       },
     }, bodyStr);
 
-    if (result.status !== 200) {
-      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: `Claude API ${result.status}: ${result.body}` }) };
-    }
+    if (result.status !== 200) return res.status(500).json({ error: `Claude API ${result.status}: ${result.body}` });
 
     const data = JSON.parse(result.body);
     const text = (data.content?.[0]?.text || '').trim();
-
-    // חלץ JSON מהתשובה
     const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) {
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({ items: [], raw: text }) };
-    }
+    if (!jsonMatch) return res.status(200).json({ items: [], raw: text });
 
     const items = JSON.parse(jsonMatch[0]);
-    return {
-      statusCode: 200,
-      headers: CORS,
-      body: JSON.stringify({ items }),
-    };
+    return res.status(200).json({ items });
   } catch (e) {
-    return {
-      statusCode: 500,
-      headers: CORS,
-      body: JSON.stringify({ error: 'שגיאה פנימית: ' + e.message }),
-    };
+    return res.status(500).json({ error: 'שגיאה פנימית: ' + e.message });
   }
 };
