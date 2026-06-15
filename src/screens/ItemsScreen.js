@@ -346,7 +346,7 @@ export default function ItemsScreen() {
                 style={s.sectionToggle}
                 onPress={() => setShowSupplierSection(v => !v)}>
                 <Text style={s.sectionToggleText}>
-                  {showSupplierSection ? '▲' : '▼'} מידע ספק (לזיהוי תעודות)
+                  {showSupplierSection ? '▲' : '▼'} מידע ספק
                 </Text>
               </TouchableOpacity>
 
