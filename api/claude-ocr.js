@@ -88,7 +88,22 @@ module.exports = async (req, res) => {
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return res.status(200).json({ items: [], raw: text });
 
-    const items = JSON.parse(jsonMatch[0]);
+    let items;
+    try {
+      items = JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      // נסה לנקות את ה-JSON — החלף מרכאות כפולות בתוך ערכים
+      try {
+        const cleaned = jsonMatch[0]
+          .replace(/:\s*"((?:[^"\\]|\\.)*)"/g, (match, val) => {
+            const fixed = val.replace(/(?<!\\)"/g, '\\"');
+            return ': "' + fixed + '"';
+          });
+        items = JSON.parse(cleaned);
+      } catch {
+        return res.status(200).json({ items: [], raw: text });
+      }
+    }
     return res.status(200).json({ items });
   } catch (e) {
     return res.status(500).json({ error: 'שגיאה פנימית: ' + e.message });
