@@ -57,7 +57,7 @@ async function writeLog(action, item, amount, note = '') {
 }
 
 // Netlify proxy → Apps Script → Google Sheets
-const PROXY_URL = '/.netlify/functions/proxy';
+const PROXY_URL = '/api/proxy';
 
 async function call(payload) {
   if (DEMO_MODE) return handleDemo(payload);

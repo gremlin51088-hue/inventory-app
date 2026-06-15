@@ -65,7 +65,7 @@ async function extractWithClaude(file, onProgress) {
 
   if (onProgress) onProgress(null, null); // "שולח ל-Claude..."
 
-  const resp = await fetch('/.netlify/functions/claude-ocr', {
+  const resp = await fetch('/api/claude-ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pages }),
