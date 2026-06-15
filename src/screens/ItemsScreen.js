@@ -417,14 +417,16 @@ export default function ItemsScreen() {
         // עדיפות: שם מהמלאי > תיאור מה-PDF > מקט
         const displayText = matchedItem ? matchedItem.name : (pdfDesc || mkt);
 
+        const autoMatched = matchedItem !== null;
         return {
           rawText: displayText,
           mkt,
+          pdfDesc,
           parsedQty: qty,
           matchedItemCode: matchedItem?.code ?? null,
           customQty: String(qty),
-          included: false,
-          autoMatched: matchedItem !== null,
+          included: autoMatched, // מאושר אוטומטית אם נמצאה התאמה
+          autoMatched,
           pickerSearch: '',
         };
       }));
@@ -511,6 +513,8 @@ export default function ItemsScreen() {
   );
 
   const confirmedCount = importLines.filter(l => l.included && l.matchedItemCode).length;
+  const matchedLines = importLines.filter(l => l.autoMatched);
+  const unmatchedLines = importLines.filter(l => !l.autoMatched);
 
   return (
     <View style={s.container}>
@@ -854,104 +858,162 @@ export default function ItemsScreen() {
                   </View>
                 ) : (
                   <>
-                    <Text style={s.importHint}>
-                      זוהו {importLines.length} שורות · {confirmedCount} אושרו ✓
-                    </Text>
-                    <Text style={[s.importHint, { color: '#E65100', marginTop: -4 }]}>
-                      בדוק כל שורה ולחץ ○ לאישור לפני שמירה
-                    </Text>
+                    {/* סיכום */}
+                    <View style={s.importSummaryRow}>
+                      <View style={s.importSummaryBadge}>
+                        <Text style={s.importSummaryNum}>{matchedLines.length}</Text>
+                        <Text style={s.importSummaryLabel}>זוהו</Text>
+                      </View>
+                      <View style={[s.importSummaryBadge, { backgroundColor: '#FFF3E0' }]}>
+                        <Text style={[s.importSummaryNum, { color: '#E65100' }]}>{unmatchedLines.length}</Text>
+                        <Text style={[s.importSummaryLabel, { color: '#E65100' }]}>ללא קישור</Text>
+                      </View>
+                      <View style={[s.importSummaryBadge, { backgroundColor: '#E8F5E9' }]}>
+                        <Text style={[s.importSummaryNum, { color: '#2E7D32' }]}>{confirmedCount}</Text>
+                        <Text style={[s.importSummaryLabel, { color: '#2E7D32' }]}>יישמרו</Text>
+                      </View>
+                    </View>
 
-                    {importLines.map((line, idx) => {
-                      const matchedItem = items.find(i => i.code === line.matchedItemCode);
-                      return (
-                        <View key={idx} style={[
-                          s.importLine,
-                          line.included ? s.importLineConfirmed : null,
-                        ]}>
-                          {/* כפתור אישור */}
-                          <TouchableOpacity
-                            style={[s.importCheckbox, line.included && s.importCheckboxDone]}
-                            onPress={() => updateImportLine(idx, { included: !line.included })}>
-                            <Text style={[s.importCheckboxText, line.included && { color: '#fff', fontSize: 16 }]}>
-                              {line.included ? '✓' : '○'}
-                            </Text>
-                          </TouchableOpacity>
+                    {/* קבוצה 1: זוהו אוטומטית */}
+                    {matchedLines.length > 0 && (
+                      <>
+                        <Text style={s.importGroupTitle}>✓ זוהו אוטומטית — בדוק כמויות</Text>
+                        {matchedLines.map((line) => {
+                          const idx = importLines.indexOf(line);
+                          const matchedItem = items.find(i => i.code === line.matchedItemCode);
+                          return (
+                            <View key={idx} style={[s.importLine, line.included ? s.importLineConfirmed : s.importLineExcluded]}>
+                              <TouchableOpacity
+                                style={[s.importCheckbox, line.included && s.importCheckboxDone]}
+                                onPress={() => updateImportLine(idx, { included: !line.included })}>
+                                <Text style={[s.importCheckboxText, line.included && { color: '#fff', fontSize: 16 }]}>
+                                  {line.included ? '✓' : '○'}
+                                </Text>
+                              </TouchableOpacity>
 
-                          <View style={{ flex: 1 }}>
-                            {/* מקט + תיאור מהתעודה */}
-                            <View style={s.importRawRow}>
-                              {line.mkt ? <Text style={s.importMktBadge}>{line.mkt}</Text> : null}
-                              <Text style={s.importRawText} numberOfLines={1}>{line.rawText}</Text>
-                            </View>
-
-                            {/* פריט מזוהה / בחירה */}
-                            <View style={s.importMatchRow}>
-                              <Text style={s.importArrow}>←</Text>
-                              {matchedItem ? (
-                                <TouchableOpacity
-                                  onPress={() => updateImportLine(idx, { matchedItemCode: null, included: false })}
-                                  style={s.importMatchedBadge}>
-                                  {line.autoMatched && !line.included && (
-                                    <Text style={s.importAutoTag}>זוהה אוטומטית · </Text>
-                                  )}
-                                  <Text style={s.importMatchedText} numberOfLines={1}>
-                                    {matchedItem.name}
-                                  </Text>
-                                  <Text style={s.importClearMatch}> ✕</Text>
-                                </TouchableOpacity>
-                              ) : (
-                                <View style={s.importPickerWrap}>
-                                  <TextInput
-                                    style={s.importPickerSearch}
-                                    placeholder="חפש פריט במלאי..."
-                                    value={line.pickerSearch}
-                                    onChangeText={v => updateImportLine(idx, { pickerSearch: v })}
-                                  />
-                                  {(line.pickerSearch
-                                    ? items.filter(i =>
-                                        i.name.toLowerCase().includes(line.pickerSearch.toLowerCase()) ||
-                                        String(i.code).includes(line.pickerSearch)
-                                      )
-                                    : items
-                                  ).slice(0, 5).map(item => (
-                                    <TouchableOpacity
-                                      key={item.code}
-                                      style={s.importPickerOption}
-                                      onPress={() => updateImportLine(idx, {
-                                        matchedItemCode: item.code,
-                                        pickerSearch: '',
-                                      })}>
-                                      <Text style={s.importPickerOptionText} numberOfLines={1}>
-                                        {item.name}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  ))}
+                              <View style={{ flex: 1 }}>
+                                <View style={s.importRawRow}>
+                                  <Text style={s.importMktBadge}>{line.mkt}</Text>
                                 </View>
-                              )}
-                            </View>
-                          </View>
+                                <Text style={s.importMatchedItemName} numberOfLines={1}>
+                                  {matchedItem?.name || line.rawText}
+                                </Text>
+                                <Text style={s.importStockHint}>
+                                  במלאי כעת: {matchedItem?.available ?? matchedItem?.qty ?? '?'} יח'
+                                </Text>
+                              </View>
 
-                          {/* כמות */}
-                          <View style={s.importQtyBlock}>
-                            <Text style={s.importQtyLabel}>כמות</Text>
-                            <TextInput
-                              style={[s.importQtyInput, line.included && s.importQtyInputDone]}
-                              value={line.customQty}
-                              onChangeText={v => updateImportLine(idx, { customQty: v })}
-                              keyboardType="numeric"
-                              textAlign="center"
-                            />
-                          </View>
-                        </View>
-                      );
-                    })}
+                              <View style={s.importQtyBlock}>
+                                <Text style={s.importQtyLabel}>כמות</Text>
+                                <TextInput
+                                  style={[s.importQtyInput, line.included && s.importQtyInputDone]}
+                                  value={line.customQty}
+                                  onChangeText={v => updateImportLine(idx, { customQty: v })}
+                                  keyboardType="numeric"
+                                  textAlign="center"
+                                />
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </>
+                    )}
+
+                    {/* קבוצה 2: ללא קישור */}
+                    {unmatchedLines.length > 0 && (
+                      <>
+                        <Text style={[s.importGroupTitle, { color: '#E65100', marginTop: 16 }]}>
+                          ○ דורשים קישור ידני ({unmatchedLines.length})
+                        </Text>
+                        <Text style={[s.importHint, { marginBottom: 6 }]}>
+                          חפש את הפריט המתאים — הקישור יישמר לייבוא הבא
+                        </Text>
+                        {unmatchedLines.map((line) => {
+                          const idx = importLines.indexOf(line);
+                          const matchedItem = items.find(i => i.code === line.matchedItemCode);
+                          return (
+                            <View key={idx} style={[s.importLine, line.included ? s.importLineConfirmed : null]}>
+                              <TouchableOpacity
+                                style={[s.importCheckbox, line.included && s.importCheckboxDone]}
+                                onPress={() => line.matchedItemCode && updateImportLine(idx, { included: !line.included })}>
+                                <Text style={[s.importCheckboxText, line.included && { color: '#fff', fontSize: 16 }]}>
+                                  {line.included ? '✓' : '○'}
+                                </Text>
+                              </TouchableOpacity>
+
+                              <View style={{ flex: 1 }}>
+                                <View style={s.importRawRow}>
+                                  <Text style={s.importMktBadge}>{line.mkt}</Text>
+                                  {line.pdfDesc ? (
+                                    <Text style={s.importRawText} numberOfLines={1}>{line.pdfDesc}</Text>
+                                  ) : null}
+                                </View>
+
+                                {matchedItem ? (
+                                  <TouchableOpacity
+                                    onPress={() => updateImportLine(idx, { matchedItemCode: null, included: false })}
+                                    style={s.importMatchedBadge}>
+                                    <Text style={s.importMatchedText} numberOfLines={1}>{matchedItem.name}</Text>
+                                    <Text style={s.importClearMatch}> ✕</Text>
+                                  </TouchableOpacity>
+                                ) : (
+                                  <View style={s.importPickerWrap}>
+                                    <TextInput
+                                      style={s.importPickerSearch}
+                                      placeholder="חפש פריט במלאי..."
+                                      value={line.pickerSearch}
+                                      onChangeText={v => updateImportLine(idx, { pickerSearch: v })}
+                                      textAlign="right"
+                                    />
+                                    {line.pickerSearch ? (
+                                      items.filter(i =>
+                                        i.name.toLowerCase().includes(line.pickerSearch.toLowerCase()) ||
+                                        String(i.code).includes(line.pickerSearch) ||
+                                        (i.supplierCode || '').toLowerCase().includes(line.pickerSearch.toLowerCase())
+                                      ).slice(0, 6).map(item => (
+                                        <TouchableOpacity
+                                          key={item.code}
+                                          style={s.importPickerOption}
+                                          onPress={() => updateImportLine(idx, {
+                                            matchedItemCode: item.code,
+                                            included: true,
+                                            pickerSearch: '',
+                                          })}>
+                                          <Text style={s.importPickerOptionText} numberOfLines={1}>
+                                            {item.name}
+                                          </Text>
+                                          <Text style={s.importPickerQtyText}>
+                                            {item.available ?? item.qty} יח'
+                                          </Text>
+                                        </TouchableOpacity>
+                                      ))
+                                    ) : null}
+                                  </View>
+                                )}
+                              </View>
+
+                              <View style={s.importQtyBlock}>
+                                <Text style={s.importQtyLabel}>כמות</Text>
+                                <TextInput
+                                  style={[s.importQtyInput, line.included && s.importQtyInputDone]}
+                                  value={line.customQty}
+                                  onChangeText={v => updateImportLine(idx, { customQty: v })}
+                                  keyboardType="numeric"
+                                  textAlign="center"
+                                />
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </>
+                    )}
 
                     <TouchableOpacity
                       style={[s.btnPrim, { marginTop: 16 }, (importSaving || confirmedCount === 0) && { opacity: 0.5 }]}
                       onPress={handleConfirmImport}
                       disabled={importSaving || confirmedCount === 0}>
                       <Text style={s.btnPrimText}>
-                        {importSaving ? 'שומר...' : confirmedCount === 0 ? 'אשר שורות כדי להמשיך' : `✓ שמור ${confirmedCount} כניסות`}
+                        {importSaving ? 'שומר...' : confirmedCount === 0 ? 'קשר שורות כדי להמשיך' : `✓ שמור ${confirmedCount} כניסות`}
                       </Text>
                     </TouchableOpacity>
                   </>
@@ -1039,4 +1101,118 @@ const s = StyleSheet.create({
   },
   sectionToggleText: { textAlign: 'right', color: '#1565C0', fontWeight: '600', fontSize: 13 },
   supplierSection: {
-    bord
+    borderWidth: 1, borderColor: '#E3F2FD', borderRadius: 8,
+    padding: 12, marginBottom: 10, backgroundColor: '#F8FBFF',
+  },
+  logFullScreen: { flex: 1, backgroundColor: '#F5F7FA' },
+  logHeader: {
+    flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#1565C0', paddingHorizontal: 16, paddingVertical: 14, paddingTop: 44,
+  },
+  logHeaderTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  logCloseBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8 },
+  logCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+
+  // Import
+  importCard: {
+    backgroundColor: '#fff', borderRadius: 12, padding: 16,
+    marginBottom: 12, elevation: 1,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3,
+  },
+  importSectionTitle: { fontSize: 16, fontWeight: '700', color: '#1a1a2e', textAlign: 'right', marginBottom: 6 },
+  importHint: { fontSize: 13, color: '#777', textAlign: 'right', marginBottom: 10 },
+  importPickBtn: {
+    borderWidth: 2, borderStyle: 'dashed', borderColor: '#1565C0',
+    borderRadius: 10, padding: 14, alignItems: 'center',
+  },
+  importPickBtnText: { color: '#1565C0', fontWeight: '600', fontSize: 14 },
+  importProcessingRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, padding: 8 },
+  importProcessingText: { color: '#555', fontSize: 14 },
+  importLine: {
+    flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8,
+    borderBottomWidth: 1, borderBottomColor: '#EEE', paddingVertical: 10,
+    borderRadius: 8, paddingHorizontal: 4,
+  },
+  importLineConfirmed: {
+    backgroundColor: '#F1FFF4',
+    borderBottomColor: '#A5D6A7',
+  },
+  importCheckbox: {
+    width: 32, height: 32, borderRadius: 16,
+    borderWidth: 2, borderColor: '#CCC',
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: 2,
+  },
+  importCheckboxDone: {
+    backgroundColor: '#2E7D32', borderColor: '#2E7D32',
+  },
+  importCheckboxText: { fontSize: 18, color: '#999' },
+  importRawRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, marginBottom: 4 },
+  importMktBadge: {
+    fontSize: 10, color: '#1565C0', backgroundColor: '#E3F2FD',
+    borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1,
+  },
+  importAutoTag: { fontSize: 11, color: '#888', fontStyle: 'italic' },
+  importRawText: { fontSize: 12, color: '#888', textAlign: 'right', flex: 1 },
+  importMatchRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  importArrow: { fontSize: 14, color: '#999' },
+  importMatchedBadge: {
+    flexDirection: 'row-reverse', alignItems: 'center',
+    backgroundColor: '#E8F5E9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, flex: 1,
+  },
+  importMatchedText: { fontSize: 13, color: '#2E7D32', fontWeight: '600', flex: 1, textAlign: 'right' },
+  importClearMatch: { fontSize: 13, color: '#999' },
+  importItemPicker: { flexDirection: 'row-reverse', gap: 6 },
+  importPickerWrap: { flex: 1 },
+  importPickerSearch: {
+    borderWidth: 1, borderColor: '#CCC', borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 4,
+    fontSize: 13, textAlign: 'right', marginBottom: 4, backgroundColor: '#FAFAFA',
+  },
+  importPickerOption: {
+    backgroundColor: '#EEF2FF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5,
+    marginBottom: 3,
+  },
+  importPickerOptionText: { fontSize: 13, color: '#1565C0', textAlign: 'right' },
+  importQtyBlock: { alignItems: 'center', minWidth: 52 },
+  importQtyLabel: { fontSize: 11, color: '#888', marginBottom: 2 },
+  importQtyInput: {
+    borderWidth: 1, borderColor: '#DDD', borderRadius: 6,
+    padding: 6, fontSize: 14, fontWeight: '700', width: 52, textAlign: 'center',
+  },
+  importQtyInputDone: {
+    borderColor: '#2E7D32', color: '#2E7D32',
+  },
+  importSummaryRow: {
+    flexDirection: 'row-reverse', gap: 8, marginBottom: 12,
+  },
+  importSummaryBadge: {
+    flex: 1, backgroundColor: '#E3F2FD', borderRadius: 10,
+    paddingVertical: 8, alignItems: 'center',
+  },
+  importSummaryNum: { fontSize: 20, fontWeight: '700', color: '#1565C0' },
+  importSummaryLabel: { fontSize: 11, color: '#1565C0', marginTop: 1 },
+  importGroupTitle: {
+    fontSize: 13, fontWeight: '700', color: '#2E7D32',
+    textAlign: 'right', marginBottom: 6, marginTop: 4,
+  },
+  importLineExcluded: {
+    opacity: 0.6,
+  },
+  importMatchedItemName: {
+    fontSize: 14, fontWeight: '600', color: '#1a1a2e',
+    textAlign: 'right', marginBottom: 1,
+  },
+  importStockHint: {
+    fontSize: 11, color: '#999', textAlign: 'right',
+  },
+  importPickerQtyText: {
+    fontSize: 11, color: '#888', marginLeft: 6,
+  },
+  rawDebugBox: {
+    backgroundColor: '#FFF8E1', borderRadius: 8, padding: 10, marginTop: 8,
+    borderWidth: 1, borderColor: '#FFE082',
+  },
+  rawDebugTitle: { fontSize: 11, color: '#F57F17', fontWeight: '700', marginBottom: 4, textAlign: 'right' },
+  rawDebugText: { fontSize: 11, color: '#555', textAlign: 'left', direction: 'ltr' },
+});
