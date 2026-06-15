@@ -1,0 +1,35 @@
+functionsDirectory = "C:\\inventory-app\\netlify\\functions"
+functionsDirectoryOrigin = "config-v1"
+plugins = []
+headers = []
+redirects = []
+
+[build]
+publish = "C:\\inventory-app\\dist"
+publishOrigin = "config"
+commandOrigin = "config"
+command = "npx expo export -p web"
+functions = "C:\\inventory-app\\netlify\\functions"
+
+[build.environment]
+NODE_VERSION = "18"
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]
+
+[functions]
+
+[functions.claude-ocr]
+timeout = 26.0
+
+[functions."*"]
+node_bundler = "esbuild"

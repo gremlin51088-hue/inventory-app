@@ -1,0 +1,13 @@
+[build]
+  command = "npx expo export -p web"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[functions."claude-ocr"]
+  timeout = 26
+
+[context.production.environment]
+  NODE_VERSION = "18"
