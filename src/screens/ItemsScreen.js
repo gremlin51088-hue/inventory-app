@@ -67,6 +67,12 @@ export default function ItemsScreen() {
   const [linkRowIdx, setLinkRowIdx] = useState(null);
   const [linkSearch, setLinkSearch] = useState('');
 
+  // הוספת פריט חדש מתעודה
+  const [newItemModal, setNewItemModal] = useState(false);
+  const [newItemModalIdx, setNewItemModalIdx] = useState(null);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemLocation, setNewItemLocation] = useState('');
+
   const MOV_COLORS = { 'כניסה': '#2E7D32', 'משיכה': '#C62828', 'החזרה': '#1565C0' };
 
   const load = useCallback(async () => {
@@ -245,15 +251,34 @@ export default function ItemsScreen() {
     ));
   };
 
+  const openNewItemModal = (idx) => {
+    setNewItemModalIdx(idx);
+    setNewItemName(xlsxRows[idx]?.תאור || '');
+    setNewItemLocation('');
+    setNewItemModal(true);
+  };
+
+  const handleNewItemConfirm = () => {
+    if (!newItemName.trim()) return;
+    setXlsxRows(prev => prev.map((r, i) =>
+      i === newItemModalIdx ? { ...r, newItemName: newItemName.trim(), newItemLocation: newItemLocation.trim() } : r
+    ));
+    setNewItemModal(false);
+  };
+
   const handleXlsxImport = async () => {
-    const toImport = xlsxRows.filter(r => !r.skip && r.matchedItem);
-    if (toImport.length === 0) {
-      Alert.alert('שגיאה', 'אין פריטים מזוהים לייבוא');
+    const matched = xlsxRows.filter(r => !r.skip && r.matchedItem);
+    const toAdd = xlsxRows.filter(r => !r.skip && !r.matchedItem && r.newItemName);
+    if (matched.length + toAdd.length === 0) {
+      Alert.alert('שגיאה', 'אין פריטים לייבוא');
       return;
     }
     setXlsxLoading(true);
     let done = 0;
-    for (const row of toImport) {
+    const total = matched.length + toAdd.length;
+
+    // עדכון פריטים קיימים
+    for (const row of matched) {
       try {
         await moveStock({
           code: row.matchedItem.code,
@@ -262,14 +287,30 @@ export default function ItemsScreen() {
           note: `יבוא תעודה — ${row.מקט}`,
         });
         done++;
-        setXlsxProgress(`מעדכן... ${done}/${toImport.length}`);
+        setXlsxProgress(`מעדכן... ${done}/${total}`);
       } catch {}
     }
+
+    // הוספת פריטים חדשים
+    for (const row of toAdd) {
+      try {
+        await addOrUpdateItem({
+          name: row.newItemName,
+          location: row.newItemLocation || '',
+          qty: row.כמות,
+          supplierCode: row.מקט,
+          supplierName: row.תאור,
+        });
+        done++;
+        setXlsxProgress(`מוסיף פריט חדש... ${done}/${total}`);
+      } catch {}
+    }
+
     const fresh = await getAllItems();
     setItems(fresh.items || []);
     setXlsxLoading(false);
     setXlsxDone(true);
-    setXlsxProgress(`✓ עודכנו ${done} פריטים בהצלחה`);
+    setXlsxProgress(`✓ עודכנו ${matched.length} פריטים, נוספו ${toAdd.length} חדשים`);
   };
 
   // ── Render ──
@@ -577,10 +618,13 @@ export default function ItemsScreen() {
           {/* סטטיסטיקה */}
           <View style={s.xlsxStats}>
             <Text style={s.xlsxStatItem}>
-              ✅ {xlsxRows.filter(r => r.matchedItem && !r.skip).length} מזוהים
+              ✅ {xlsxRows.filter(r => r.matchedItem && !r.skip).length} קיימים
             </Text>
             <Text style={s.xlsxStatItem}>
-              ❓ {xlsxRows.filter(r => !r.matchedItem && !r.skip).length} לא מזוהים
+              ➕ {xlsxRows.filter(r => !r.matchedItem && r.newItemName && !r.skip).length} חדשים
+            </Text>
+            <Text style={s.xlsxStatItem}>
+              ❓ {xlsxRows.filter(r => !r.matchedItem && !r.newItemName && !r.skip).length} ממתינים
             </Text>
             <Text style={s.xlsxStatItem}>
               ⏭ {xlsxRows.filter(r => r.skip).length} מדולגים
@@ -598,10 +642,17 @@ export default function ItemsScreen() {
                   <Text style={s.xlsxDesc}>{row.תאור}</Text>
                   <Text style={s.xlsxQty}>כמות: {row.כמות}</Text>
                   {row.matchedItem
-                    ? <Text style={s.xlsxMatched}>→ {row.matchedItem.name}</Text>
-                    : <TouchableOpacity onPress={() => openLinkModal(index)}>
-                        <Text style={s.xlsxLink}>+ קשר לפריט במלאי</Text>
-                      </TouchableOpacity>
+                    ? <Text style={s.xlsxMatched}>✅ {row.matchedItem.name}</Text>
+                    : row.newItemName
+                      ? <Text style={s.xlsxNew}>➕ חדש: {row.newItemName}</Text>
+                      : <View style={s.xlsxActions}>
+                          <TouchableOpacity onPress={() => openLinkModal(index)}>
+                            <Text style={s.xlsxLink}>🔗 קשר לפריט קיים</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => openNewItemModal(index)}>
+                            <Text style={s.xlsxLinkNew}>➕ הוסף כפריט חדש</Text>
+                          </TouchableOpacity>
+                        </View>
                   }
                 </View>
                 <TouchableOpacity style={s.xlsxSkipBtn} onPress={() => toggleSkip(index)}>
@@ -632,6 +683,45 @@ export default function ItemsScreen() {
               </TouchableOpacity>
             </View>
           )}
+        </View>
+      </Modal>
+
+      {/* ── מודאל הוספת פריט חדש מתעודה ── */}
+      <Modal visible={newItemModal} animationType="fade" transparent>
+        <View style={s.overlay}>
+          <View style={s.modal}>
+            <Text style={s.modalTitle}>➕ הוסף פריט חדש</Text>
+            {newItemModalIdx !== null && (
+              <Text style={s.xlsxMakat}>מקט ספק: {xlsxRows[newItemModalIdx]?.מקט}</Text>
+            )}
+            <Text style={s.fieldLabel}>שם הפריט (ניתן לשינוי)</Text>
+            <TextInput
+              style={s.input}
+              value={newItemName}
+              onChangeText={setNewItemName}
+              textAlign="right"
+              autoFocus
+            />
+            <Text style={s.fieldLabel}>מיקום (אופציונלי)</Text>
+            <TextInput
+              style={s.input}
+              value={newItemLocation}
+              onChangeText={setNewItemLocation}
+              textAlign="right"
+              placeholder="מחסן, מדף..."
+            />
+            <Text style={[s.fieldLabel, { color: '#888', fontSize: 11 }]}>
+              המקט של הספק יישמר אוטומטית לזיהוי תעודות עתידיות
+            </Text>
+            <View style={s.btnRow}>
+              <TouchableOpacity style={s.btnSec} onPress={() => setNewItemModal(false)}>
+                <Text style={s.btnSecText}>ביטול</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.btnPrim} onPress={handleNewItemConfirm}>
+                <Text style={s.btnPrimText}>אישור</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
 
@@ -790,4 +880,7 @@ const s = StyleSheet.create({
   },
   linkItemName: { fontSize: 14, color: '#1a1a2e', textAlign: 'right' },
   linkItemCode: { fontSize: 12, color: '#888' },
+  xlsxNew: { fontSize: 12, color: '#1565C0', fontWeight: '600', textAlign: 'right', marginTop: 4 },
+  xlsxActions: { flexDirection: 'row-reverse', gap: 12, marginTop: 4 },
+  xlsxLinkNew: { fontSize: 12, color: '#1565C0', fontWeight: '600' },
 });
