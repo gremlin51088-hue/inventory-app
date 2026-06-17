@@ -4,6 +4,7 @@ import {
   StyleSheet, ActivityIndicator, Alert, Modal, ScrollView,
   I18nManager,
 } from 'react-native';
+import * as XLSX from 'xlsx';
 import { getAllItems, addOrUpdateItem, editItem, getItem, moveStock, getLog } from '../api';
 import { inventoryEvents } from '../storage';
 
@@ -53,6 +54,18 @@ export default function ItemsScreen() {
   // יומן
   const [logModal, setLogModal] = useState(false);
   const [logData, setLogData] = useState([]);
+
+  // יבוא אקסל
+  const [xlsxModal, setXlsxModal] = useState(false);
+  const [xlsxRows, setXlsxRows] = useState([]);
+  const [xlsxLoading, setXlsxLoading] = useState(false);
+  const [xlsxProgress, setXlsxProgress] = useState('');
+  const [xlsxDone, setXlsxDone] = useState(false);
+
+  // קישור ידני לפריט לא מזוהה
+  const [linkModal, setLinkModal] = useState(false);
+  const [linkRowIdx, setLinkRowIdx] = useState(null);
+  const [linkSearch, setLinkSearch] = useState('');
 
   const MOV_COLORS = { 'כניסה': '#2E7D32', 'משיכה': '#C62828', 'החזרה': '#1565C0' };
 
@@ -174,6 +187,91 @@ export default function ItemsScreen() {
     } catch (e) { Alert.alert('שגיאה', e.message); }
   };
 
+  // ── יבוא אקסל ──
+  const openXlsxPicker = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const parsed = [];
+        for (const row of raw) {
+          const מקט = String(row[0] || '').trim();
+          const תאור = String(row[1] || '').trim();
+          const כמות = Number(row[2]);
+          // דלג על שורת כותרת ושורות ריקות
+          if (!מקט || isNaN(כמות) || כמות <= 0) continue;
+          const matchedItem = items.find(i =>
+            i.supplierCode && i.supplierCode.toLowerCase() === מקט.toLowerCase()
+          ) || null;
+          parsed.push({ מקט, תאור, כמות, matchedItem, skip: false });
+        }
+        if (parsed.length === 0) {
+          Alert.alert('שגיאה', 'לא נמצאו שורות תקינות בקובץ');
+          return;
+        }
+        setXlsxRows(parsed);
+        setXlsxProgress('');
+        setXlsxDone(false);
+        setXlsxModal(true);
+      };
+      reader.readAsArrayBuffer(file);
+    };
+    input.click();
+  };
+
+  const openLinkModal = (idx) => {
+    setLinkRowIdx(idx);
+    setLinkSearch('');
+    setLinkModal(true);
+  };
+
+  const handleLinkItem = (item) => {
+    setXlsxRows(prev => prev.map((r, i) =>
+      i === linkRowIdx ? { ...r, matchedItem: item } : r
+    ));
+    setLinkModal(false);
+  };
+
+  const toggleSkip = (idx) => {
+    setXlsxRows(prev => prev.map((r, i) =>
+      i === idx ? { ...r, skip: !r.skip } : r
+    ));
+  };
+
+  const handleXlsxImport = async () => {
+    const toImport = xlsxRows.filter(r => !r.skip && r.matchedItem);
+    if (toImport.length === 0) {
+      Alert.alert('שגיאה', 'אין פריטים מזוהים לייבוא');
+      return;
+    }
+    setXlsxLoading(true);
+    let done = 0;
+    for (const row of toImport) {
+      try {
+        await moveStock({
+          code: row.matchedItem.code,
+          action: 'כניסה',
+          amount: row.כמות,
+          note: `יבוא תעודה — ${row.מקט}`,
+        });
+        done++;
+        setXlsxProgress(`מעדכן... ${done}/${toImport.length}`);
+      } catch {}
+    }
+    const fresh = await getAllItems();
+    setItems(fresh.items || []);
+    setXlsxLoading(false);
+    setXlsxDone(true);
+    setXlsxProgress(`✓ עודכנו ${done} פריטים בהצלחה`);
+  };
+
   // ── Render ──
 
   const renderItem = ({ item }) => (
@@ -220,8 +318,11 @@ export default function ItemsScreen() {
         />
       )}
 
-      {/* כפתור FAB */}
+      {/* כפתורי FAB */}
       <View style={s.fabContainer}>
+        <TouchableOpacity style={s.fabSecondary} onPress={openXlsxPicker}>
+          <Text style={s.fabText}>📥 יבוא תעודה</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={s.fab} onPress={() => setAddModal(true)}>
           <Text style={s.fabText}>+ הוסף פריט</Text>
         </TouchableOpacity>
@@ -462,6 +563,112 @@ export default function ItemsScreen() {
         </View>
       </Modal>
 
+      {/* ── מודאל יבוא אקסל ── */}
+      <Modal visible={xlsxModal} animationType="slide" transparent={false}>
+        <View style={s.logFullScreen}>
+          <View style={s.logHeader}>
+            <Text style={s.logHeaderTitle}>📥 יבוא מאקסל</Text>
+            <TouchableOpacity style={s.logCloseBtn}
+              onPress={() => { if (!xlsxLoading) setXlsxModal(false); }}>
+              <Text style={s.logCloseBtnText}>✕ סגור</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* סטטיסטיקה */}
+          <View style={s.xlsxStats}>
+            <Text style={s.xlsxStatItem}>
+              ✅ {xlsxRows.filter(r => r.matchedItem && !r.skip).length} מזוהים
+            </Text>
+            <Text style={s.xlsxStatItem}>
+              ❓ {xlsxRows.filter(r => !r.matchedItem && !r.skip).length} לא מזוהים
+            </Text>
+            <Text style={s.xlsxStatItem}>
+              ⏭ {xlsxRows.filter(r => r.skip).length} מדולגים
+            </Text>
+          </View>
+
+          <FlatList
+            data={xlsxRows}
+            keyExtractor={(_, i) => String(i)}
+            contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
+            renderItem={({ item: row, index }) => (
+              <View style={[s.xlsxRow, row.skip && s.xlsxRowSkipped]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.xlsxMakat}>{row.מקט}</Text>
+                  <Text style={s.xlsxDesc}>{row.תאור}</Text>
+                  <Text style={s.xlsxQty}>כמות: {row.כמות}</Text>
+                  {row.matchedItem
+                    ? <Text style={s.xlsxMatched}>→ {row.matchedItem.name}</Text>
+                    : <TouchableOpacity onPress={() => openLinkModal(index)}>
+                        <Text style={s.xlsxLink}>+ קשר לפריט במלאי</Text>
+                      </TouchableOpacity>
+                  }
+                </View>
+                <TouchableOpacity style={s.xlsxSkipBtn} onPress={() => toggleSkip(index)}>
+                  <Text style={s.xlsxSkipText}>{row.skip ? 'בטל' : 'דלג'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          />
+
+          {/* כפתור יבוא */}
+          {!xlsxDone ? (
+            <View style={s.xlsxFooter}>
+              {xlsxProgress ? <Text style={s.xlsxProgressText}>{xlsxProgress}</Text> : null}
+              <TouchableOpacity
+                style={[s.btnPrim, xlsxLoading && { opacity: 0.6 }]}
+                onPress={handleXlsxImport}
+                disabled={xlsxLoading}>
+                <Text style={s.btnPrimText}>
+                  {xlsxLoading ? xlsxProgress || 'מעדכן...' : `בצע יבוא (${xlsxRows.filter(r => !r.skip && r.matchedItem).length} פריטים)`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={s.xlsxFooter}>
+              <Text style={s.xlsxDoneText}>{xlsxProgress}</Text>
+              <TouchableOpacity style={s.btnPrim} onPress={() => setXlsxModal(false)}>
+                <Text style={s.btnPrimText}>סגור</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* ── מודאל קישור ידני ── */}
+      <Modal visible={linkModal} animationType="slide" transparent>
+        <View style={s.overlay}>
+          <View style={[s.modal, { maxHeight: '80%' }]}>
+            <Text style={s.modalTitle}>קשר לפריט במלאי</Text>
+            {linkRowIdx !== null && (
+              <Text style={s.xlsxMakat}>{xlsxRows[linkRowIdx]?.מקט} — {xlsxRows[linkRowIdx]?.תאור}</Text>
+            )}
+            <TextInput
+              style={[s.input, { marginTop: 10 }]}
+              placeholder="חיפוש פריט..."
+              value={linkSearch}
+              onChangeText={setLinkSearch}
+              textAlign="right"
+              autoFocus
+            />
+            <ScrollView style={{ maxHeight: 300 }}>
+              {items
+                .filter(i => !linkSearch || i.name.includes(linkSearch) || String(i.code).includes(linkSearch))
+                .map(i => (
+                  <TouchableOpacity key={i.code} style={s.linkItem} onPress={() => handleLinkItem(i)}>
+                    <Text style={s.linkItemName}>{i.name}</Text>
+                    <Text style={s.linkItemCode}>#{i.code}</Text>
+                  </TouchableOpacity>
+                ))
+              }
+            </ScrollView>
+            <TouchableOpacity style={[s.btnSec, { marginTop: 10 }]} onPress={() => setLinkModal(false)}>
+              <Text style={s.btnSecText}>ביטול</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -546,4 +753,41 @@ const s = StyleSheet.create({
   logHeaderTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
   logCloseBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8 },
   logCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  fabSecondary: {
+    backgroundColor: '#2E7D32', paddingHorizontal: 22, paddingVertical: 14,
+    borderRadius: 30, elevation: 4,
+  },
+  xlsxStats: {
+    flexDirection: 'row-reverse', justifyContent: 'space-around',
+    paddingVertical: 10, backgroundColor: '#fff',
+    borderBottomWidth: 1, borderBottomColor: '#EEE',
+  },
+  xlsxStatItem: { fontSize: 13, fontWeight: '600', color: '#333' },
+  xlsxRow: {
+    flexDirection: 'row-reverse', alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 10, padding: 12,
+    marginBottom: 8, elevation: 1,
+    borderRightWidth: 4, borderRightColor: '#1565C0',
+  },
+  xlsxRowSkipped: { opacity: 0.4, borderRightColor: '#CCC' },
+  xlsxMakat: { fontSize: 13, fontWeight: '700', color: '#1565C0', textAlign: 'right' },
+  xlsxDesc: { fontSize: 12, color: '#555', textAlign: 'right', marginTop: 2 },
+  xlsxQty: { fontSize: 12, color: '#333', textAlign: 'right', marginTop: 2 },
+  xlsxMatched: { fontSize: 12, color: '#2E7D32', fontWeight: '600', textAlign: 'right', marginTop: 4 },
+  xlsxLink: { fontSize: 12, color: '#F57C00', fontWeight: '600', textAlign: 'right', marginTop: 4 },
+  xlsxSkipBtn: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#EEE', borderRadius: 6, marginRight: 8 },
+  xlsxSkipText: { fontSize: 12, color: '#555', fontWeight: '600' },
+  xlsxFooter: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    padding: 16, backgroundColor: '#fff',
+    borderTopWidth: 1, borderTopColor: '#EEE',
+  },
+  xlsxProgressText: { textAlign: 'center', color: '#555', marginBottom: 8, fontSize: 13 },
+  xlsxDoneText: { textAlign: 'center', color: '#2E7D32', fontWeight: '700', fontSize: 16, marginBottom: 10 },
+  linkItem: {
+    flexDirection: 'row-reverse', justifyContent: 'space-between',
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#EEE',
+  },
+  linkItemName: { fontSize: 14, color: '#1a1a2e', textAlign: 'right' },
+  linkItemCode: { fontSize: 12, color: '#888' },
 });
