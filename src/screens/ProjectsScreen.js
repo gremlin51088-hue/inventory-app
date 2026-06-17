@@ -22,6 +22,7 @@ export default function ProjectsScreen() {
   // refs לגלילה לסוף
   const projectsListRef = useRef(null);
   const allocPickerRef = useRef(null);
+  const noteInputRef = useRef(null);
 
   // ---- הקצאה ----
   const [selProject, setSelProject] = useState(null);
@@ -312,8 +313,10 @@ export default function ProjectsScreen() {
                 {selItem ? `${selItem.name} (זמין: ${selItem.available ?? selItem.qty})` : 'בחר פריט...'}
               </Text>
             </TouchableOpacity>
-            <TextInput style={s.input} placeholder="כמות להקצאה" value={qty} onChangeText={setQty} keyboardType="numeric" textAlign="right" />
-            <TextInput style={s.input} placeholder="הערה (אופציונלי)" value={note} onChangeText={setNote} textAlign="right" />
+            <TextInput style={s.input} placeholder="כמות להקצאה" value={qty} onChangeText={setQty} keyboardType="numeric" textAlign="right"
+              returnKeyType="next" onSubmitEditing={() => noteInputRef.current?.focus()} />
+            <TextInput ref={noteInputRef} style={s.input} placeholder="הערה (אופציונלי)" value={note} onChangeText={setNote} textAlign="right"
+              returnKeyType="done" onSubmitEditing={handleAction} />
             <TouchableOpacity style={[s.submitBtn, { backgroundColor: '#1565C0' }]} onPress={handleAction} disabled={loading}>
               <Text style={s.submitBtnText}>{loading ? 'שולח...' : 'הקצה לפרויקט'}</Text>
             </TouchableOpacity>
@@ -325,8 +328,8 @@ export default function ProjectsScreen() {
               <Text style={s.allocListTitle}>📋 הקצאות פעילות — {selProject.name}</Text>
               {selProjectAllocs.map((a, i) => (
                 <View key={i} style={s.allocListRow}>
-                  <Text style={s.allocListQty}>{a.qty} יח'</Text>
                   <Text style={s.allocListName}>{a.name}</Text>
+                  <Text style={s.allocListQty}>{a.qty} יח'</Text>
                 </View>
               ))}
               <View style={s.allocListTotal}>
@@ -666,7 +669,8 @@ export default function ProjectsScreen() {
           <View style={s.modal}>
             <Text style={s.modalTitle}>פרויקט חדש</Text>
             <TextInput style={s.input} placeholder="שם פרויקט" value={newProjectName}
-              onChangeText={setNewProjectName} textAlign="right" autoFocus />
+              onChangeText={setNewProjectName} textAlign="right" autoFocus
+              returnKeyType="done" onSubmitEditing={handleAddProject} />
             <View style={s.btnRow}>
               <TouchableOpacity style={s.btnSec} onPress={() => { setAddProjectModal(false); setNewProjectName(''); }}>
                 <Text style={s.btnSecText}>ביטול</Text>
@@ -727,6 +731,8 @@ export default function ProjectsScreen() {
               onChangeText={setEditProjectName}
               textAlign="right"
               autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleEditProject}
             />
             <Text style={s.fieldLabel}>סטטוס</Text>
             <View style={s.statusRow}>
@@ -877,7 +883,7 @@ const s = StyleSheet.create({
     paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
   },
   allocListName: { fontSize: 14, color: '#1a1a2e', textAlign: 'right', flex: 1 },
-  allocListQty: { fontSize: 14, fontWeight: '700', color: '#1565C0', minWidth: 50, textAlign: 'left' },
+  allocListQty: { fontSize: 14, fontWeight: '700', color: '#1565C0', minWidth: 60, textAlign: 'left' },
   allocListTotal: { marginTop: 8, alignItems: 'flex-end' },
   allocListTotalText: { fontSize: 13, color: '#888', fontWeight: '600' },
 });
