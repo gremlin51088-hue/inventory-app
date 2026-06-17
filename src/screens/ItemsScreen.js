@@ -500,7 +500,8 @@ export default function ItemsScreen() {
                     value={editSupplierCode}
                     onChangeText={setEditSupplierCode}
                     textAlign="right"
-                    placeholder="1234-ABC"
+                    placeholder="לדוגמה: plst-hc58000004"
+                    placeholderTextColor="#BBBBBB"
                   />
                   <Text style={s.fieldLabel}>שם ספק (כפי שמופיע בתעודה)</Text>
                   <TextInput
@@ -508,7 +509,8 @@ export default function ItemsScreen() {
                     value={editSupplierName}
                     onChangeText={setEditSupplierName}
                     textAlign="right"
-                    placeholder="ברגים M6 DIN933"
+                    placeholder="לדוגמה: כבל 3X1.5 חביות"
+                    placeholderTextColor="#BBBBBB"
                   />
                   <Text style={s.fieldLabel}>שמות חלופיים (מופרדים בפסיק)</Text>
                   <TextInput
@@ -516,7 +518,8 @@ export default function ItemsScreen() {
                     value={editAltNames}
                     onChangeText={setEditAltNames}
                     textAlign="right"
-                    placeholder="בורג M6, Screw M6"
+                    placeholder="לדוגמה: כבל NYY, כבל שחור"
+                    placeholderTextColor="#BBBBBB"
                   />
                 </View>
               )}
