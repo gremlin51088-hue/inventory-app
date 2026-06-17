@@ -288,4 +288,12 @@ export async function getProjectWithdrawals(projectName) {
     const log = JSON.parse(str || '[]');
     const map = {};
     log.filter(l => l.action === `משיכה — ${projectName}`).forEach(l => {
-      if (!map[l.code
+      if (!map[l.code]) map[l.code] = { code: l.code, name: l.name, totalWithdrawn: 0 };
+      map[l.code].totalWithdrawn += l.amount;
+    });
+    log.filter(l => l.action === `שחרור — ${projectName}`).forEach(l => {
+      if (map[l.code]) map[l.code].totalWithdrawn = Math.max(0, map[l.code].totalWithdrawn - l.amount);
+    });
+    return { withdrawals: Object.values(map).filter(w => w.totalWithdrawn > 0) };
+  } catch { return { withdrawals: [] }; }
+}
