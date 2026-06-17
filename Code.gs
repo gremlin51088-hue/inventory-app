@@ -50,10 +50,11 @@ function initSheets() {
     }
     return sh;
   }
-  ensureSheet('Items',    ['code','name','location','totalQty','available','allocations','supplierCode','supplierName','altNames','minQty']);
-  ensureSheet('Projects', ['name','status','date']);
-  ensureSheet('Log',      ['time','action','code','name','amount','totalQty','available','note']);
-  ensureSheet('Config',   ['key','value']);
+  ensureSheet('Items',            ['code','name','location','totalQty','available','allocations','supplierCode','supplierName','altNames','minQty']);
+  ensureSheet('Projects',         ['name','status','date']);
+  ensureSheet('Log',              ['time','action','code','name','amount','totalQty','available','note']);
+  ensureSheet('Config',           ['key','value']);
+  ensureSheet('SupplierMappings', ['supplierCode','supplierName','itemCode','itemName','addedDate']);
   const cfg = ss.getSheetByName('Config');
   if (cfg.getLastRow() <= 1) cfg.appendRow(['nextCode','1']);
 }
@@ -184,6 +185,17 @@ function route(p) {
       saveItems_(items);
       setNextCode(code + 1);
     }
+    return { success: true };
+  }
+
+  if (action === 'deleteItem') {
+    const items = getAllItems_();
+    const idx = items.findIndex(i => i.code == p.code);
+    if (idx === -1) return { error: 'פריט לא נמצא' };
+    const item = items[idx];
+    writeLog_('מחיקה', item, 0, 'פריט נמחק מהמערכת');
+    items.splice(idx, 1);
+    saveItems_(items);
     return { success: true };
   }
 
@@ -365,5 +377,59 @@ function route(p) {
     return { withdrawals: Object.values(map).filter(w => w.totalWithdrawn > 0) };
   }
 
+  if (action === 'getSupplierMappings') {
+    return getSupplierMappings_();
+  }
+
+  if (action === 'addSupplierMapping') {
+    return addSupplierMapping_(p);
+  }
+
+  if (action === 'getSuppliers') {
+    return getSuppliers_();
+  }
+
   return {};
+}
+
+// ============================================================
+// מיפויי ספקים
+// ============================================================
+
+function getSupplierMappings_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('SupplierMappings');
+  if (!sh || sh.getLastRow() <= 1) return { mappings: [] };
+  const data = sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues();
+  return {
+    mappings: data
+      .filter(r => r[0] !== '')
+      .map(r => ({
+        supplierCode: r[0],
+        supplierName: r[1],
+        itemCode:     r[2],
+        itemName:     r[3],
+        addedDate:    r[4] instanceof Date ? Utilities.formatDate(r[4], Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm') : String(r[4]),
+      }))
+  };
+}
+
+function addSupplierMapping_(p) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('SupplierMappings');
+  if (!sh) return { error: 'SupplierMappings sheet not found' };
+  // בדוק אם קיים (אותו supplierCode + supplierName)
+  if (sh.getLastRow() > 1) {
+    const data = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][0]) === String(p.supplierCode) && String(data[i][1]) === String(p.supplierName)) {
+        // עדכן itemCode ו-itemName
+        sh.getRange(i + 2, 3).setValue(p.itemCode);
+        sh.getRange(i + 2, 4).setValue(p.itemName);
+        return { success: true };
+      }
+    }
+  }
+  const tz = Session.getScriptTimeZone();
+  const date = Utilities.formatDate(new Date(), tz, 'dd/MM/yyyy HH:mm:ss');
+  sh.appendRow([p.supplierCode, p.supplierName, p.itemCode, p.itemName, date]);
+  return { success: true };
 }

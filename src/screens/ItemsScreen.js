@@ -5,7 +5,7 @@ import {
   I18nManager,
 } from 'react-native';
 import * as XLSX from 'xlsx';
-import { getAllItems, addOrUpdateItem, editItem, getItem, moveStock, getLog } from '../api';
+import { getAllItems, addOrUpdateItem, editItem, deleteItem, getItem, moveStock, getLog } from '../api';
 import { inventoryEvents } from '../storage';
 
 I18nManager.allowRTL(true);
@@ -532,6 +532,25 @@ export default function ItemsScreen() {
                   <Text style={s.btnPrimText}>שמור</Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                style={s.btnDelete}
+                onPress={() => Alert.alert(
+                  'מחיקת פריט',
+                  `למחוק את "${itemToEdit?.name}"?\nפעולה זו אינה ניתנת לביטול.`,
+                  [
+                    { text: 'ביטול', style: 'cancel' },
+                    { text: 'מחק', style: 'destructive', onPress: async () => {
+                      try {
+                        await deleteItem({ code: itemToEdit.code });
+                        setEditModal(false);
+                        Alert.alert('✓', 'הפריט נמחק');
+                        load();
+                      } catch (e) { Alert.alert('שגיאה', e.message); }
+                    }},
+                  ]
+                )}>
+                <Text style={s.btnDeleteText}>🗑️ מחק פריט</Text>
+              </TouchableOpacity>
             </View>
           </ScrollView>
         </View>
@@ -793,97 +812,4 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3,
   },
   cardRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 4 },
-  itemName: { fontSize: 16, fontWeight: '700', color: '#1a1a2e' },
-  itemCode: { fontSize: 13, color: '#888' },
-  label: { fontSize: 13, color: '#555' },
-  val: { fontWeight: '600', color: '#1565C0' },
-  lowStockBadge: {
-    fontSize: 11, color: '#E65100', fontWeight: '600', textAlign: 'right',
-    marginTop: 4,
-  },
-  empty: { textAlign: 'center', marginTop: 40, color: '#999', fontSize: 15 },
-  fabContainer: {
-    position: 'absolute', bottom: 20, left: 0, right: 0,
-    flexDirection: 'row-reverse', justifyContent: 'center', gap: 10,
-    paddingHorizontal: 16,
-  },
-  fab: {
-    backgroundColor: '#1565C0', paddingHorizontal: 22, paddingVertical: 14,
-    borderRadius: 30, elevation: 4,
-  },
-  fabText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 20 },
-  modal: { backgroundColor: '#fff', borderRadius: 16, padding: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '700', textAlign: 'right', marginBottom: 16, color: '#1a1a2e' },
-  input: {
-    borderWidth: 1, borderColor: '#DDD', borderRadius: 8,
-    padding: 10, marginBottom: 10, fontSize: 15,
-  },
-  btnRow: { flexDirection: 'row-reverse', gap: 10, marginTop: 8 },
-  btnPrim: { flex: 1, backgroundColor: '#1565C0', padding: 12, borderRadius: 8, alignItems: 'center' },
-  btnPrimText: { color: '#fff', fontWeight: '700' },
-  btnSec: { flex: 1, backgroundColor: '#EEE', padding: 12, borderRadius: 8, alignItems: 'center' },
-  btnSecText: { color: '#333', fontWeight: '700' },
-  detailRow: { fontSize: 14, textAlign: 'right', marginBottom: 6, color: '#333' },
-  btnEdit: { flex: 1, backgroundColor: '#F57C00', padding: 12, borderRadius: 8, alignItems: 'center' },
-  btnMov: { flex: 1, backgroundColor: '#2E7D32', padding: 12, borderRadius: 8, alignItems: 'center' },
-  errorText: { color: '#C62828', textAlign: 'right', fontSize: 13, marginBottom: 6 },
-  fieldLabel: { fontSize: 13, fontWeight: '600', textAlign: 'right', color: '#555', marginBottom: 4 },
-  sectionToggle: {
-    borderWidth: 1, borderColor: '#DDD', borderRadius: 8,
-    padding: 10, marginBottom: 10, backgroundColor: '#F5F7FA',
-  },
-  sectionToggleText: { textAlign: 'right', color: '#1565C0', fontWeight: '600', fontSize: 13 },
-  supplierSection: {
-    borderWidth: 1, borderColor: '#E3F2FD', borderRadius: 8,
-    padding: 12, marginBottom: 10, backgroundColor: '#F8FBFF',
-  },
-  logFullScreen: { flex: 1, backgroundColor: '#F5F7FA' },
-  logHeader: {
-    flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#1565C0', paddingHorizontal: 16, paddingVertical: 14, paddingTop: 44,
-  },
-  logHeaderTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  logCloseBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8 },
-  logCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  fabSecondary: {
-    backgroundColor: '#2E7D32', paddingHorizontal: 22, paddingVertical: 14,
-    borderRadius: 30, elevation: 4,
-  },
-  xlsxStats: {
-    flexDirection: 'row-reverse', justifyContent: 'space-around',
-    paddingVertical: 10, backgroundColor: '#fff',
-    borderBottomWidth: 1, borderBottomColor: '#EEE',
-  },
-  xlsxStatItem: { fontSize: 13, fontWeight: '600', color: '#333' },
-  xlsxRow: {
-    flexDirection: 'row-reverse', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: 10, padding: 12,
-    marginBottom: 8, elevation: 1,
-    borderRightWidth: 4, borderRightColor: '#1565C0',
-  },
-  xlsxRowSkipped: { opacity: 0.4, borderRightColor: '#CCC' },
-  xlsxMakat: { fontSize: 13, fontWeight: '700', color: '#1565C0', textAlign: 'right' },
-  xlsxDesc: { fontSize: 12, color: '#555', textAlign: 'right', marginTop: 2 },
-  xlsxQty: { fontSize: 12, color: '#333', textAlign: 'right', marginTop: 2 },
-  xlsxMatched: { fontSize: 12, color: '#2E7D32', fontWeight: '600', textAlign: 'right', marginTop: 4 },
-  xlsxLink: { fontSize: 12, color: '#F57C00', fontWeight: '600', textAlign: 'right', marginTop: 4 },
-  xlsxSkipBtn: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#EEE', borderRadius: 6, marginRight: 8 },
-  xlsxSkipText: { fontSize: 12, color: '#555', fontWeight: '600' },
-  xlsxFooter: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    padding: 16, backgroundColor: '#fff',
-    borderTopWidth: 1, borderTopColor: '#EEE',
-  },
-  xlsxProgressText: { textAlign: 'center', color: '#555', marginBottom: 8, fontSize: 13 },
-  xlsxDoneText: { textAlign: 'center', color: '#2E7D32', fontWeight: '700', fontSize: 16, marginBottom: 10 },
-  linkItem: {
-    flexDirection: 'row-reverse', justifyContent: 'space-between',
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#EEE',
-  },
-  linkItemName: { fontSize: 14, color: '#1a1a2e', textAlign: 'right' },
-  linkItemCode: { fontSize: 12, color: '#888' },
-  xlsxNew: { fontSize: 12, color: '#1565C0', fontWeight: '600', textAlign: 'right', marginTop: 4 },
-  xlsxActions: { flexDirection: 'row-reverse', gap: 12, marginTop: 4 },
-  xlsxLinkNew: { fontSize: 12, color: '#1565C0', fontWeight: '600' },
-});
+  itemName: { fontSize: 16, fontWeight
