@@ -62,6 +62,7 @@ export default function ItemsScreen() {
   const [xlsxLoading, setXlsxLoading] = useState(false);
   const [xlsxProgress, setXlsxProgress] = useState('');
   const [xlsxDone, setXlsxDone] = useState(false);
+  const [xlsxError, setXlsxError] = useState('');
 
   // קישור ידני לפריט לא מזוהה
   const [linkModal, setLinkModal] = useState(false);
@@ -198,13 +199,19 @@ export default function ItemsScreen() {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setXlsxError('');
+    const currentItems = items;
     const reader = new FileReader();
-    reader.onerror = () => Alert.alert('שגיאה', 'לא ניתן לקרוא את הקובץ');
+    reader.onerror = () => {
+      setXlsxError('לא ניתן לקרוא את הקובץ');
+      setXlsxModal(true);
+    };
     reader.onload = (ev) => {
       try {
         const wb = XLSX.read(ev.target.result, { type: 'array' });
         if (!wb.SheetNames.length) {
-          Alert.alert('שגיאה', 'הקובץ ריק — אין גיליונות');
+          setXlsxError('הקובץ ריק — אין גיליונות');
+          setXlsxModal(true);
           return;
         }
         const ws = wb.Sheets[wb.SheetNames[0]];
@@ -215,10 +222,25 @@ export default function ItemsScreen() {
           const תאור = String(row[1] || '').trim();
           const כמות = Number(row[2]);
           if (!מקט || isNaN(כמות) || כמות <= 0) continue;
-          parsed.push({ מקט, תאור, כמות, matchedItem: null, suggestedItem: null, skip: false });
+          // חיפוש התאמה לפי מקט ספק
+          let suggestedItem = currentItems.find(i =>
+            i.supplierCode && i.supplierCode.toLowerCase() === מקט.toLowerCase()
+          ) || null;
+          // אם אין התאמת מקט — חפש לפי שם
+          if (!suggestedItem && תאור) {
+            const desc = תאור.toLowerCase();
+            suggestedItem = currentItems.find(i => {
+              const name = (i.name || '').toLowerCase();
+              const altNames = Array.isArray(i.altNames) ? i.altNames.map(a => String(a).toLowerCase()) : [];
+              return name === desc || desc.includes(name) || name.includes(desc) ||
+                altNames.some(a => a && (desc.includes(a) || a.includes(desc)));
+            }) || null;
+          }
+          parsed.push({ מקט, תאור, כמות, matchedItem: null, suggestedItem, skip: false });
         }
         if (parsed.length === 0) {
-          Alert.alert('שגיאה', `לא נמצאו שורות תקינות\n(${raw.length} שורות נסרקו — בדוק שעמודה א׳=מקט, ג׳=כמות)`);
+          setXlsxError(`לא נמצאו שורות תקינות (${raw.length} שורות נסרקו — בדוק שעמודה א׳=מקט, ג׳=כמות)`);
+          setXlsxModal(true);
           return;
         }
         setXlsxRows(parsed);
@@ -227,7 +249,8 @@ export default function ItemsScreen() {
         setXlsxModal(true);
         if (fileInputRef.current) fileInputRef.current.value = '';
       } catch (err) {
-        Alert.alert('שגיאה בפתיחת הקובץ', err.message || 'קובץ לא תקין');
+        setXlsxError('שגיאה בפתיחת הקובץ: ' + (err.message || 'קובץ לא תקין'));
+        setXlsxModal(true);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -640,88 +663,103 @@ export default function ItemsScreen() {
           <View style={s.logHeader}>
             <Text style={s.logHeaderTitle}>📥 יבוא מאקסל</Text>
             <TouchableOpacity style={s.logCloseBtn}
-              onPress={() => { if (!xlsxLoading) setXlsxModal(false); }}>
+              onPress={() => { if (!xlsxLoading) { setXlsxModal(false); setXlsxError(''); } }}>
               <Text style={s.logCloseBtnText}>✕ סגור</Text>
             </TouchableOpacity>
           </View>
 
-          {/* סטטיסטיקה */}
-          <View style={s.xlsxStats}>
-            <Text style={s.xlsxStatItem}>
-              ✅ {xlsxRows.filter(r => r.matchedItem && !r.skip).length} קיימים
-            </Text>
-            <Text style={s.xlsxStatItem}>
-              ➕ {xlsxRows.filter(r => !r.matchedItem && r.newItemName && !r.skip).length} חדשים
-            </Text>
-            <Text style={s.xlsxStatItem}>
-              ❓ {xlsxRows.filter(r => !r.matchedItem && !r.newItemName && !r.skip).length} ממתינים
-            </Text>
-            <Text style={s.xlsxStatItem}>
-              ⏭ {xlsxRows.filter(r => r.skip).length} מדולגים
-            </Text>
-          </View>
-
-          <FlatList
-            data={xlsxRows}
-            keyExtractor={(_, i) => String(i)}
-            contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
-            renderItem={({ item: row, index }) => (
-              <View style={[s.xlsxRow, row.skip && s.xlsxRowSkipped]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.xlsxMakat}>{row.מקט}</Text>
-                  <Text style={s.xlsxDesc}>{row.תאור}</Text>
-                  <Text style={s.xlsxQty}>כמות: {row.כמות}</Text>
-                  {row.matchedItem
-                    ? <View style={s.xlsxActions}>
-                        <Text style={s.xlsxMatched}>✅ {row.matchedItem.name}</Text>
-                        <TouchableOpacity onPress={() => setXlsxRows(prev => prev.map((r,i) => i===index ? {...r, matchedItem: null} : r))}>
-                          <Text style={s.xlsxCancelLink}>✕ בטל</Text>
-                        </TouchableOpacity>
-                      </View>
-                    : row.newItemName
-                      ? <View style={s.xlsxActions}>
-                          <Text style={s.xlsxNew}>➕ חדש: {row.newItemName}</Text>
-                          <TouchableOpacity onPress={() => setXlsxRows(prev => prev.map((r,i) => i===index ? {...r, newItemName: '', newItemLocation: ''} : r))}>
-                            <Text style={s.xlsxCancelLink}>✕ בטל</Text>
-                          </TouchableOpacity>
-                        </View>
-                      : <View style={s.xlsxActions}>
-                            <TouchableOpacity onPress={() => openLinkModal(index)}>
-                              <Text style={s.xlsxLink}>🔗 קשר לפריט קיים</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => openNewItemModal(index)}>
-                              <Text style={s.xlsxLinkNew}>➕ הוסף כפריט חדש</Text>
-                            </TouchableOpacity>
-                          </View>
-                  }
-                </View>
-                <TouchableOpacity style={s.xlsxSkipBtn} onPress={() => toggleSkip(index)}>
-                  <Text style={s.xlsxSkipText}>{row.skip ? 'בטל' : 'דלג'}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          />
-
-          {/* כפתור יבוא */}
-          {!xlsxDone ? (
-            <View style={s.xlsxFooter}>
-              {xlsxProgress ? <Text style={s.xlsxProgressText}>{xlsxProgress}</Text> : null}
-              <TouchableOpacity
-                style={[s.btnPrim, xlsxLoading && { opacity: 0.6 }]}
-                onPress={handleXlsxImport}
-                disabled={xlsxLoading}>
-                <Text style={s.btnPrimText}>
-                  {xlsxLoading ? xlsxProgress || 'מעדכן...' : `בצע יבוא (${xlsxRows.filter(r => !r.skip && r.matchedItem).length} פריטים)`}
-                </Text>
-              </TouchableOpacity>
+          {/* הצגת שגיאה */}
+          {xlsxError ? (
+            <View style={s.xlsxErrorBox}>
+              <Text style={s.xlsxErrorText}>⚠️ {xlsxError}</Text>
             </View>
           ) : (
-            <View style={s.xlsxFooter}>
-              <Text style={s.xlsxDoneText}>{xlsxProgress}</Text>
-              <TouchableOpacity style={s.btnPrim} onPress={() => setXlsxModal(false)}>
-                <Text style={s.btnPrimText}>סגור</Text>
-              </TouchableOpacity>
-            </View>
+            <>
+              {/* סטטיסטיקה */}
+              <View style={s.xlsxStats}>
+                <Text style={s.xlsxStatItem}>✅ {xlsxRows.filter(r => r.matchedItem && !r.skip).length} קיימים</Text>
+                <Text style={s.xlsxStatItem}>➕ {xlsxRows.filter(r => !r.matchedItem && r.newItemName && !r.skip).length} חדשים</Text>
+                <Text style={s.xlsxStatItem}>❓ {xlsxRows.filter(r => !r.matchedItem && !r.newItemName && !r.skip).length} ממתינים</Text>
+                <Text style={s.xlsxStatItem}>⏭ {xlsxRows.filter(r => r.skip).length} מדולגים</Text>
+              </View>
+
+              <FlatList
+                data={xlsxRows}
+                keyExtractor={(_, i) => String(i)}
+                contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
+                renderItem={({ item: row, index }) => (
+                  <View style={[s.xlsxRow, row.skip && s.xlsxRowSkipped]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.xlsxMakat}>{row.מקט}</Text>
+                      <Text style={s.xlsxDesc}>{row.תאור}</Text>
+                      <Text style={s.xlsxQty}>כמות: {row.כמות}</Text>
+                      {row.matchedItem
+                        ? <View style={s.xlsxActions}>
+                            <Text style={s.xlsxMatched}>✅ {row.matchedItem.name}</Text>
+                            <TouchableOpacity onPress={() => setXlsxRows(prev => prev.map((r,i) => i===index ? {...r, matchedItem: null} : r))}>
+                              <Text style={s.xlsxCancelLink}>✕ בטל</Text>
+                            </TouchableOpacity>
+                          </View>
+                        : row.newItemName
+                          ? <View style={s.xlsxActions}>
+                              <Text style={s.xlsxNew}>➕ חדש: {row.newItemName}</Text>
+                              <TouchableOpacity onPress={() => setXlsxRows(prev => prev.map((r,i) => i===index ? {...r, newItemName: '', newItemLocation: ''} : r))}>
+                                <Text style={s.xlsxCancelLink}>✕ בטל</Text>
+                              </TouchableOpacity>
+                            </View>
+                          : row.suggestedItem
+                            ? <View>
+                                <Text style={s.xlsxSuggest}>💡 נמצא: {row.suggestedItem.name}</Text>
+                                <View style={s.xlsxActions}>
+                                  <TouchableOpacity style={s.xlsxBtnYes}
+                                    onPress={() => setXlsxRows(prev => prev.map((r,i) => i===index ? {...r, matchedItem: r.suggestedItem, suggestedItem: null} : r))}>
+                                    <Text style={s.xlsxBtnYesText}>✓ כן</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity style={s.xlsxBtnNo}
+                                    onPress={() => setXlsxRows(prev => prev.map((r,i) => i===index ? {...r, suggestedItem: null} : r))}>
+                                    <Text style={s.xlsxBtnNoText}>✕ לא</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            : <View style={s.xlsxActions}>
+                                <TouchableOpacity onPress={() => openLinkModal(index)}>
+                                  <Text style={s.xlsxLink}>🔗 קשר לפריט קיים</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => openNewItemModal(index)}>
+                                  <Text style={s.xlsxLinkNew}>➕ הוסף כפריט חדש</Text>
+                                </TouchableOpacity>
+                              </View>
+                      }
+                    </View>
+                    <TouchableOpacity style={s.xlsxSkipBtn} onPress={() => toggleSkip(index)}>
+                      <Text style={s.xlsxSkipText}>{row.skip ? 'בטל' : 'דלג'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+
+              {/* כפתור יבוא */}
+              {!xlsxDone ? (
+                <View style={s.xlsxFooter}>
+                  {xlsxProgress ? <Text style={s.xlsxProgressText}>{xlsxProgress}</Text> : null}
+                  <TouchableOpacity
+                    style={[s.btnPrim, xlsxLoading && { opacity: 0.6 }]}
+                    onPress={handleXlsxImport}
+                    disabled={xlsxLoading}>
+                    <Text style={s.btnPrimText}>
+                      {xlsxLoading ? xlsxProgress || 'מעדכן...' : `בצע יבוא (${xlsxRows.filter(r => !r.skip && r.matchedItem).length} פריטים)`}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={s.xlsxFooter}>
+                  <Text style={s.xlsxDoneText}>{xlsxProgress}</Text>
+                  <TouchableOpacity style={s.btnPrim} onPress={() => setXlsxModal(false)}>
+                    <Text style={s.btnPrimText}>סגור</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
           )}
         </View>
       </Modal>
@@ -924,6 +962,13 @@ const s = StyleSheet.create({
   xlsxActions: { flexDirection: 'row-reverse', gap: 12, marginTop: 4 },
   xlsxLinkNew: { fontSize: 12, color: '#1565C0', fontWeight: '600' },
   xlsxCancelLink: { fontSize: 12, color: '#C62828', fontWeight: '600' },
+  xlsxErrorBox: { margin: 16, padding: 16, backgroundColor: '#FFF3E0', borderRadius: 10, borderWidth: 1, borderColor: '#E65100' },
+  xlsxErrorText: { color: '#E65100', fontSize: 14, fontWeight: '600', textAlign: 'right' },
+  xlsxSuggest: { fontSize: 13, color: '#E65100', fontWeight: '700', textAlign: 'right', marginBottom: 6 },
+  xlsxBtnYes: { backgroundColor: '#2E7D32', paddingHorizontal: 18, paddingVertical: 7, borderRadius: 8 },
+  xlsxBtnYesText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  xlsxBtnNo: { backgroundColor: '#C62828', paddingHorizontal: 18, paddingVertical: 7, borderRadius: 8 },
+  xlsxBtnNoText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   btnDelete: {
     marginTop: 12, padding: 12, borderRadius: 8, alignItems: 'center',
     borderWidth: 1, borderColor: '#D32F2F', backgroundColor: '#FFF5F5',
