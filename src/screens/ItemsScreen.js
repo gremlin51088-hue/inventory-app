@@ -224,7 +224,7 @@ export default function ItemsScreen() {
           if (!מקט || isNaN(כמות) || כמות <= 0) continue;
           // חיפוש התאמה לפי מקט ספק
           let suggestedItem = currentItems.find(i =>
-            i.supplierCode && i.supplierCode.toLowerCase() === מקט.toLowerCase()
+            i.supplierCode && String(i.supplierCode).toLowerCase() === מקט.toLowerCase()
           ) || null;
           // אם אין התאמת מקט — חפש לפי שם
           if (!suggestedItem && תאור) {
