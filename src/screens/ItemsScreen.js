@@ -58,6 +58,7 @@ export default function ItemsScreen() {
 
   // יבוא אקסל
   const [xlsxModal, setXlsxModal] = useState(false);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [xlsxRows, setXlsxRows] = useState([]);
   const [xlsxLoading, setXlsxLoading] = useState(false);
   const [xlsxProgress, setXlsxProgress] = useState('');
@@ -388,10 +389,11 @@ export default function ItemsScreen() {
         <View style={[s.fabSecondary, { overflow: 'hidden' }]}>
           <Text style={s.fabText}>📥 יבוא תעודה</Text>
           <input
+            key={fileInputKey}
             type="file"
             accept=".xlsx,.xls"
             onChange={handleFileChange}
-            onClick={e => { e.target.value = ''; }}
+            onClick={() => setFileInputKey(k => k + 1)}
             style={{
               position: 'absolute', top: 0, left: 0,
               width: '100%', height: '100%',
