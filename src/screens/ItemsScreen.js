@@ -202,30 +202,38 @@ export default function ItemsScreen() {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
+      reader.onerror = () => Alert.alert('שגיאה', 'לא ניתן לקרוא את הקובץ');
       reader.onload = (ev) => {
-        const wb = XLSX.read(ev.target.result, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const raw = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const parsed = [];
-        for (const row of raw) {
-          const מקט = String(row[0] || '').trim();
-          const תאור = String(row[1] || '').trim();
-          const כמות = Number(row[2]);
-          // דלג על שורת כותרת ושורות ריקות
-          if (!מקט || isNaN(כמות) || כמות <= 0) continue;
-          const matchedItem = items.find(i =>
-            i.supplierCode && i.supplierCode.toLowerCase() === מקט.toLowerCase()
-          ) || null;
-          parsed.push({ מקט, תאור, כמות, matchedItem, skip: false });
+        try {
+          const wb = XLSX.read(ev.target.result, { type: 'array' });
+          if (!wb.SheetNames.length) {
+            Alert.alert('שגיאה', 'הקובץ ריק — אין גיליונות');
+            return;
+          }
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const raw = XLSX.utils.sheet_to_json(ws, { header: 1 });
+          const parsed = [];
+          for (const row of raw) {
+            const מקט = String(row[0] || '').trim();
+            const תאור = String(row[1] || '').trim();
+            const כמות = Number(row[2]);
+            if (!מקט || isNaN(כמות) || כמות <= 0) continue;
+            const matchedItem = items.find(i =>
+              i.supplierCode && i.supplierCode.toLowerCase() === מקט.toLowerCase()
+            ) || null;
+            parsed.push({ מקט, תאור, כמות, matchedItem, skip: false });
+          }
+          if (parsed.length === 0) {
+            Alert.alert('שגיאה', `לא נמצאו שורות תקינות בקובץ\n(${raw.length} שורות נסרקו — בדוק שעמודה א׳=מקט, ג׳=כמות)`);
+            return;
+          }
+          setXlsxRows(parsed);
+          setXlsxProgress('');
+          setXlsxDone(false);
+          setXlsxModal(true);
+        } catch (e) {
+          Alert.alert('שגיאה בפתיחת הקובץ', e.message || 'קובץ לא תקין');
         }
-        if (parsed.length === 0) {
-          Alert.alert('שגיאה', 'לא נמצאו שורות תקינות בקובץ');
-          return;
-        }
-        setXlsxRows(parsed);
-        setXlsxProgress('');
-        setXlsxDone(false);
-        setXlsxModal(true);
       };
       reader.readAsArrayBuffer(file);
     };
