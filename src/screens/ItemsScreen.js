@@ -250,7 +250,10 @@ export default function ItemsScreen() {
   };
 
   const openXlsxPicker = () => {
-    fileInputRef.current?.click();
+    const label = document.getElementById('xlsx-file-label');
+    const input = document.getElementById('xlsx-file-input');
+    if (input) input.click();
+    else if (label) label.click();
   };
 
   const openLinkModal = (idx) => {
@@ -391,13 +394,16 @@ export default function ItemsScreen() {
       </View>
 
       {/* input נסתר לייבוא קובץ */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".xlsx,.xls"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
+      <label htmlFor="xlsx-file-input" style={{ display: 'none' }} id="xlsx-file-label">
+        <input
+          id="xlsx-file-input"
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+      </label>
 
       {/* ── מודאל הוספה ── */}
       <Modal visible={addModal} animationType="slide" transparent>
