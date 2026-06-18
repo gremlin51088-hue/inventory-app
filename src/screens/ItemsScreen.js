@@ -561,7 +561,7 @@ export default function ItemsScreen() {
         <View style={s.overlay}>
           <View style={s.modal}>
             <Text style={s.modalTitle}>🔄 תנועת מלאי — {movItem?.name}</Text>
-            <Text style={s.hint}>זמין: {movItem?.available ?? movItem?.qty}  |  כולל: {movItem?.totalQty ?? movItem?.qty}</Text>
+            <Text style={s.hint}>זמין: {movItem?.available ?? movItem?.qty}  |  כולל: {movItem?.totalQty ?? movItem?.qty}{movItem?.location ? `  |  📍 ${movItem.location}` : ''}</Text>
             <View style={s.actionRow}>
               {['כניסה','משיכה','החזרה'].map(a => (
                 <TouchableOpacity key={a}
