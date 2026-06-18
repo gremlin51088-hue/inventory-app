@@ -56,6 +56,7 @@ export default function ItemsScreen() {
   const [logData, setLogData] = useState([]);
 
   // יבוא אקסל
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [xlsxModal, setXlsxModal] = useState(false);
   const [xlsxRows, setXlsxRows] = useState([]);
   const [xlsxLoading, setXlsxLoading] = useState(false);
@@ -195,9 +196,8 @@ export default function ItemsScreen() {
 
   // ── יבוא אקסל ──
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
-    e.target.value = '';  // reset so same file can be re-selected
     const reader = new FileReader();
     reader.onerror = () => Alert.alert('שגיאה', 'לא ניתן לקרוא את הקובץ');
     reader.onload = (ev) => {
@@ -241,6 +241,7 @@ export default function ItemsScreen() {
         setXlsxProgress('');
         setXlsxDone(false);
         setXlsxModal(true);
+        setFileInputKey(k => k + 1); // remount input to allow re-selection
       } catch (err) {
         Alert.alert('שגיאה בפתיחת הקובץ', err.message || 'קובץ לא תקין');
       }
@@ -387,6 +388,7 @@ export default function ItemsScreen() {
         <View style={[s.fabSecondary, { overflow: 'hidden' }]}>
           <Text style={s.fabText}>📥 יבוא תעודה</Text>
           <input
+            key={fileInputKey}
             type="file"
             accept=".xlsx,.xls"
             onChange={handleFileChange}
