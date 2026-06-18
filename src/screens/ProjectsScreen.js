@@ -95,6 +95,7 @@ export default function ProjectsScreen() {
       (itemsData.items || []).forEach(i => { itemsMap[i.code] = i; });
       setWithdrawList((allocData.allocations || []).map(a => ({
         code: a.code, name: a.name,
+        location: itemsMap[a.code]?.location || '',
         allocatedQty: a.qty,
         availableInStock: itemsMap[a.code]?.available ?? itemsMap[a.code]?.qty ?? 0,
         actualQty: String(a.qty), selected: true,
@@ -397,7 +398,10 @@ export default function ProjectsScreen() {
                       <View style={[s.checkbox, item.selected && s.checkboxSelected]}>
                         {item.selected && <Text style={s.checkmark}>✓</Text>}
                       </View>
-                      <Text style={s.withdrawName}>{item.name}</Text>
+                      <View>
+                        <Text style={s.withdrawName}>{item.name}</Text>
+                        {item.location ? <Text style={s.withdrawLocation}>📍 {item.location}</Text> : null}
+                      </View>
                     </TouchableOpacity>
                     <View style={s.withdrawQtyRow}>
                       <View style={s.withdrawQtyBlock}>
@@ -805,6 +809,7 @@ const s = StyleSheet.create({
   checkboxSelected: { backgroundColor: '#1565C0', borderColor: '#1565C0' },
   checkmark: { color: '#fff', fontWeight: '700', fontSize: 13 },
   withdrawName: { fontSize: 15, fontWeight: '600', color: '#1a1a2e', flex: 1, textAlign: 'right' },
+  withdrawLocation: { fontSize: 12, color: '#888', textAlign: 'right', marginTop: 1 },
   withdrawQtyRow: { flexDirection: 'row-reverse', gap: 12 },
   withdrawQtyBlock: { flex: 1, alignItems: 'center' },
   withdrawLabel: { fontSize: 11, color: '#888', marginBottom: 4 },
