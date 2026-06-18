@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, FlatList, TouchableOpacity,
   StyleSheet, ActivityIndicator, Alert, Modal, ScrollView,
@@ -14,7 +14,6 @@ I18nManager.forceRTL(true);
 const EDIT_PASSWORD = '12345';
 
 export default function ItemsScreen() {
-  const fileInputRef = useRef(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -58,7 +57,6 @@ export default function ItemsScreen() {
 
   // יבוא אקסל
   const [xlsxModal, setXlsxModal] = useState(false);
-  const [fileInputKey, setFileInputKey] = useState(0);
   const [xlsxRows, setXlsxRows] = useState([]);
   const [xlsxLoading, setXlsxLoading] = useState(false);
   const [xlsxProgress, setXlsxProgress] = useState('');
@@ -199,7 +197,7 @@ export default function ItemsScreen() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    e.target.value = '';  // reset so same file can be re-selected
     const reader = new FileReader();
     reader.onerror = () => Alert.alert('שגיאה', 'לא ניתן לקרוא את הקובץ');
     reader.onload = (ev) => {
@@ -389,11 +387,9 @@ export default function ItemsScreen() {
         <View style={[s.fabSecondary, { overflow: 'hidden' }]}>
           <Text style={s.fabText}>📥 יבוא תעודה</Text>
           <input
-            key={fileInputKey}
             type="file"
             accept=".xlsx,.xls"
             onChange={handleFileChange}
-            onClick={() => setFileInputKey(k => k + 1)}
             style={{
               position: 'absolute', top: 0, left: 0,
               width: '100%', height: '100%',
