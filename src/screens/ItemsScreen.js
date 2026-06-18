@@ -198,6 +198,8 @@ export default function ItemsScreen() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.xlsx,.xls';
+    input.style.display = 'none';
+    document.body.appendChild(input);
     input.onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -236,6 +238,7 @@ export default function ItemsScreen() {
         }
       };
       reader.readAsArrayBuffer(file);
+      document.body.removeChild(input);
     };
     input.click();
   };
