@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, TextInput, FlatList, TouchableOpacity,
   StyleSheet, ActivityIndicator, Alert, Modal, ScrollView,
@@ -56,7 +56,7 @@ export default function ItemsScreen() {
   const [logData, setLogData] = useState([]);
 
   // יבוא אקסל
-  const [fileInputKey, setFileInputKey] = useState(0);
+  const fileInputRef = useRef(null);
   const [xlsxModal, setXlsxModal] = useState(false);
   const [xlsxRows, setXlsxRows] = useState([]);
   const [xlsxLoading, setXlsxLoading] = useState(false);
@@ -241,19 +241,12 @@ export default function ItemsScreen() {
         setXlsxProgress('');
         setXlsxDone(false);
         setXlsxModal(true);
-        setFileInputKey(k => k + 1); // remount input to allow re-selection
+        if (fileInputRef.current) fileInputRef.current.value = '';
       } catch (err) {
         Alert.alert('שגיאה בפתיחת הקובץ', err.message || 'קובץ לא תקין');
       }
     };
     reader.readAsArrayBuffer(file);
-  };
-
-  const openXlsxPicker = () => {
-    const label = document.getElementById('xlsx-file-label');
-    const input = document.getElementById('xlsx-file-input');
-    if (input) input.click();
-    else if (label) label.click();
   };
 
   const openLinkModal = (idx) => {
@@ -385,20 +378,16 @@ export default function ItemsScreen() {
 
       {/* כפתורי FAB */}
       <View style={s.fabContainer}>
-        <View style={[s.fabSecondary, { overflow: 'hidden' }]}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={handleFileChange}
+          style={{ display: 'none' }}
+        />
+        <TouchableOpacity style={s.fabSecondary} onPress={() => fileInputRef.current?.click()}>
           <Text style={s.fabText}>📥 יבוא תעודה</Text>
-          <input
-            key={fileInputKey}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleFileChange}
-            style={{
-              position: 'absolute', top: 0, left: 0,
-              width: '100%', height: '100%',
-              opacity: 0, cursor: 'pointer',
-            }}
-          />
-        </View>
+        </TouchableOpacity>
         <TouchableOpacity style={s.fab} onPress={() => setAddModal(true)}>
           <Text style={s.fabText}>+ הוסף פריט</Text>
         </TouchableOpacity>
