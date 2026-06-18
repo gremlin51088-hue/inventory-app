@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, TextInput, FlatList, TouchableOpacity,
   StyleSheet, ActivityIndicator, Alert, Modal, ScrollView,
@@ -14,6 +14,7 @@ I18nManager.forceRTL(true);
 const EDIT_PASSWORD = '12345';
 
 export default function ItemsScreen() {
+  const fileInputRef = useRef(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -194,53 +195,49 @@ export default function ItemsScreen() {
   };
 
   // ── יבוא אקסל ──
-  const openXlsxPicker = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.xlsx,.xls';
-    input.style.display = 'none';
-    document.body.appendChild(input);
-    input.onchange = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onerror = () => Alert.alert('שגיאה', 'לא ניתן לקרוא את הקובץ');
-      reader.onload = (ev) => {
-        try {
-          const wb = XLSX.read(ev.target.result, { type: 'array' });
-          if (!wb.SheetNames.length) {
-            Alert.alert('שגיאה', 'הקובץ ריק — אין גיליונות');
-            return;
-          }
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const raw = XLSX.utils.sheet_to_json(ws, { header: 1 });
-          const parsed = [];
-          for (const row of raw) {
-            const מקט = String(row[0] || '').trim();
-            const תאור = String(row[1] || '').trim();
-            const כמות = Number(row[2]);
-            if (!מקט || isNaN(כמות) || כמות <= 0) continue;
-            const matchedItem = items.find(i =>
-              i.supplierCode && i.supplierCode.toLowerCase() === מקט.toLowerCase()
-            ) || null;
-            parsed.push({ מקט, תאור, כמות, matchedItem, skip: false });
-          }
-          if (parsed.length === 0) {
-            Alert.alert('שגיאה', `לא נמצאו שורות תקינות בקובץ\n(${raw.length} שורות נסרקו — בדוק שעמודה א׳=מקט, ג׳=כמות)`);
-            return;
-          }
-          setXlsxRows(parsed);
-          setXlsxProgress('');
-          setXlsxDone(false);
-          setXlsxModal(true);
-        } catch (e) {
-          Alert.alert('שגיאה בפתיחת הקובץ', e.message || 'קובץ לא תקין');
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    const reader = new FileReader();
+    reader.onerror = () => Alert.alert('שגיאה', 'לא ניתן לקרוא את הקובץ');
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        if (!wb.SheetNames.length) {
+          Alert.alert('שגיאה', 'הקובץ ריק — אין גיליונות');
+          return;
         }
-      };
-      reader.readAsArrayBuffer(file);
-      document.body.removeChild(input);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const parsed = [];
+        for (const row of raw) {
+          const מקט = String(row[0] || '').trim();
+          const תאור = String(row[1] || '').trim();
+          const כמות = Number(row[2]);
+          if (!מקט || isNaN(כמות) || כמות <= 0) continue;
+          const matchedItem = items.find(i =>
+            i.supplierCode && i.supplierCode.toLowerCase() === מקט.toLowerCase()
+          ) || null;
+          parsed.push({ מקט, תאור, כמות, matchedItem, skip: false });
+        }
+        if (parsed.length === 0) {
+          Alert.alert('שגיאה', `לא נמצאו שורות תקינות\n(${raw.length} שורות נסרקו — בדוק שעמודה א׳=מקט, ג׳=כמות)`);
+          return;
+        }
+        setXlsxRows(parsed);
+        setXlsxProgress('');
+        setXlsxDone(false);
+        setXlsxModal(true);
+      } catch (err) {
+        Alert.alert('שגיאה בפתיחת הקובץ', err.message || 'קובץ לא תקין');
+      }
     };
-    input.click();
+    reader.readAsArrayBuffer(file);
+  };
+
+  const openXlsxPicker = () => {
+    fileInputRef.current?.click();
   };
 
   const openLinkModal = (idx) => {
@@ -379,6 +376,15 @@ export default function ItemsScreen() {
           <Text style={s.fabText}>+ הוסף פריט</Text>
         </TouchableOpacity>
       </View>
+
+      {/* input נסתר לייבוא קובץ */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
 
       {/* ── מודאל הוספה ── */}
       <Modal visible={addModal} animationType="slide" transparent>
