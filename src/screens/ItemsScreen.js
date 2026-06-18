@@ -385,25 +385,21 @@ export default function ItemsScreen() {
 
       {/* כפתורי FAB */}
       <View style={s.fabContainer}>
-        <TouchableOpacity style={s.fabSecondary} onPress={openXlsxPicker}>
-          <Text style={s.fabText}>📥 יבוא תעודה</Text>
-        </TouchableOpacity>
+        <label style={{ cursor: 'pointer' }}>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+          <View style={s.fabSecondary} pointerEvents="none">
+            <Text style={s.fabText}>📥 יבוא תעודה</Text>
+          </View>
+        </label>
         <TouchableOpacity style={s.fab} onPress={() => setAddModal(true)}>
           <Text style={s.fabText}>+ הוסף פריט</Text>
         </TouchableOpacity>
       </View>
-
-      {/* input נסתר לייבוא קובץ */}
-      <label htmlFor="xlsx-file-input" style={{ display: 'none' }} id="xlsx-file-label">
-        <input
-          id="xlsx-file-input"
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls"
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
-      </label>
 
       {/* ── מודאל הוספה ── */}
       <Modal visible={addModal} animationType="slide" transparent>
