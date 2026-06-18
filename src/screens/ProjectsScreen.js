@@ -203,7 +203,11 @@ export default function ProjectsScreen() {
     if (!project) { setSelProjectAllocs([]); return; }
     try {
       const data = await getProjectAllocations(project.name);
-      setSelProjectAllocs(data.allocations || []);
+      const itemsMap = {};
+      items.forEach(i => { itemsMap[i.code] = i; });
+      setSelProjectAllocs((data.allocations || []).map(a => ({
+        ...a, location: itemsMap[a.code]?.location || '',
+      })));
     } catch { setSelProjectAllocs([]); }
   }, []);
 
@@ -289,7 +293,7 @@ export default function ProjectsScreen() {
     <View style={s.container}>
       {/* טאבים */}
       <View style={s.tabs}>
-        {[['allocate','הקצאה'],['withdraw','משיכה'],['release','שחרור'],['projects','פרויקטים']].map(([key, label]) => (
+        {[['allocate','הקצאה'],['withdraw','משיכה'],['release','החזרה'],['projects','פרויקטים']].map(([key, label]) => (
           <TouchableOpacity key={key} style={[s.tab, tab === key && s.tabActive]} onPress={() => setTab(key)}>
             <Text style={[s.tabText, tab === key && s.tabTextActive]}>{label}</Text>
           </TouchableOpacity>
@@ -329,7 +333,10 @@ export default function ProjectsScreen() {
               <Text style={s.allocListTitle}>📋 הקצאות פעילות — {selProject.name}</Text>
               {selProjectAllocs.map((a, i) => (
                 <View key={i} style={s.allocListRow}>
-                  <Text style={s.allocListName}>{a.name}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.allocListName}>{a.name}</Text>
+                    {a.location ? <Text style={s.withdrawLocation}>📍 {a.location}</Text> : null}
+                  </View>
                   <Text style={s.allocListQty}>{a.qty} יח'</Text>
                 </View>
               ))}
