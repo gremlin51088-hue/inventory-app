@@ -215,21 +215,7 @@ export default function ItemsScreen() {
           const תאור = String(row[1] || '').trim();
           const כמות = Number(row[2]);
           if (!מקט || isNaN(כמות) || כמות <= 0) continue;
-          // חיפוש התאמה לפי מקט ספק
-          let suggestedItem = items.find(i =>
-            i.supplierCode && i.supplierCode.toLowerCase() === מקט.toLowerCase()
-          ) || null;
-          // אם אין התאמת מקט — חפש לפי שם
-          if (!suggestedItem && תאור) {
-            const desc = תאור.toLowerCase();
-            suggestedItem = items.find(i => {
-              const name = (i.name || '').toLowerCase();
-              const altNames = (i.altNames || []).map(a => a.toLowerCase());
-              return name === desc || desc.includes(name) || name.includes(desc) ||
-                altNames.some(a => desc.includes(a) || a.includes(desc));
-            }) || null;
-          }
-          parsed.push({ מקט, תאור, כמות, matchedItem: null, suggestedItem, skip: false });
+          parsed.push({ מקט, תאור, כמות, matchedItem: null, suggestedItem: null, skip: false });
         }
         if (parsed.length === 0) {
           Alert.alert('שגיאה', `לא נמצאו שורות תקינות\n(${raw.length} שורות נסרקו — בדוק שעמודה א׳=מקט, ג׳=כמות)`);
@@ -699,23 +685,7 @@ export default function ItemsScreen() {
                             <Text style={s.xlsxCancelLink}>✕ בטל</Text>
                           </TouchableOpacity>
                         </View>
-                      : row.suggestedItem
-                        ? <View>
-                            <Text style={s.xlsxSuggest}>💡 נמצא: {row.suggestedItem.name}</Text>
-                            <View style={s.xlsxActions}>
-                              <TouchableOpacity
-                                style={s.xlsxBtnYes}
-                                onPress={() => setXlsxRows(prev => prev.map((r,i) => i===index ? {...r, matchedItem: r.suggestedItem, suggestedItem: null} : r))}>
-                                <Text style={s.xlsxBtnYesText}>✓ כן</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={s.xlsxBtnNo}
-                                onPress={() => setXlsxRows(prev => prev.map((r,i) => i===index ? {...r, suggestedItem: null} : r))}>
-                                <Text style={s.xlsxBtnNoText}>✕ לא</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        : <View style={s.xlsxActions}>
+                      : <View style={s.xlsxActions}>
                             <TouchableOpacity onPress={() => openLinkModal(index)}>
                               <Text style={s.xlsxLink}>🔗 קשר לפריט קיים</Text>
                             </TouchableOpacity>
@@ -954,11 +924,6 @@ const s = StyleSheet.create({
   xlsxActions: { flexDirection: 'row-reverse', gap: 12, marginTop: 4 },
   xlsxLinkNew: { fontSize: 12, color: '#1565C0', fontWeight: '600' },
   xlsxCancelLink: { fontSize: 12, color: '#C62828', fontWeight: '600' },
-  xlsxSuggest: { fontSize: 13, color: '#E65100', fontWeight: '700', textAlign: 'right', marginBottom: 6 },
-  xlsxBtnYes: { backgroundColor: '#2E7D32', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 8 },
-  xlsxBtnYesText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  xlsxBtnNo: { backgroundColor: '#C62828', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 8 },
-  xlsxBtnNoText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   btnDelete: {
     marginTop: 12, padding: 12, borderRadius: 8, alignItems: 'center',
     borderWidth: 1, borderColor: '#D32F2F', backgroundColor: '#FFF5F5',
