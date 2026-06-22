@@ -163,6 +163,54 @@ export default function ProjectsScreen() {
     finally { setReleaseLoading(false); }
   };
 
+  const exportWithdrawPDF = () => {
+    const project = withdrawProject?.name || '';
+    const date = new Date().toLocaleDateString('he-IL');
+    const rows = withdrawList.map(i => `
+      <tr>
+        <td>${i.name}</td>
+        <td>${i.location || '—'}</td>
+        <td>${i.allocatedQty}</td>
+        <td>${i.availableInStock}</td>
+        <td style="width:60px"></td>
+      </tr>`).join('');
+    const html = `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>רשימת משיכה — ${project}</title>
+<style>
+  body { font-family: Arial, sans-serif; direction: rtl; padding: 20px; color: #111; }
+  h2 { color: #1565C0; margin-bottom: 4px; }
+  .meta { color: #555; font-size: 13px; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: #1565C0; color: #fff; padding: 10px 8px; text-align: right; }
+  td { padding: 9px 8px; border-bottom: 1px solid #DDD; text-align: right; }
+  tr:nth-child(even) { background: #F5F5F5; }
+  .sign { color: #888; font-size: 12px; }
+  @media print { button { display: none; } }
+</style>
+</head>
+<body>
+<h2>📦 רשימת משיכה — ${project}</h2>
+<div class="meta">תאריך: ${date} &nbsp;|&nbsp; סה״כ פריטים: ${withdrawList.length}</div>
+<table>
+  <thead>
+    <tr><th>שם פריט</th><th>מיקום</th><th>מוקצה</th><th>זמין</th><th>כמות בפועל</th></tr>
+  </thead>
+  <tbody>${rows}</tbody>
+</table>
+<br><br>
+<div class="sign">חתימת מבצע: _________________ &nbsp;&nbsp;&nbsp; תאריך: _________________</div>
+<br>
+<button onclick="window.print()" style="background:#1565C0;color:#fff;padding:10px 24px;border:none;border-radius:8px;font-size:15px;cursor:pointer">🖨 הדפס / שמור כ-PDF</button>
+</body></html>`;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  };
+
   const toggleSelectAll = (val) => setWithdrawList(wl => wl.map(i => ({ ...i, selected: val })));
   const updateActualQty = (code, val) => setWithdrawList(wl => wl.map(i => i.code === code ? { ...i, actualQty: val } : i));
   const toggleSelected = (code) => setWithdrawList(wl => wl.map(i => i.code === code ? { ...i, selected: !i.selected } : i));
@@ -437,6 +485,12 @@ export default function ProjectsScreen() {
                 )}
               />
               <View style={s.withdrawFooter}>
+                <TouchableOpacity
+                  style={[s.submitBtn, { backgroundColor: '#1565C0', marginBottom: 8 }]}
+                  onPress={exportWithdrawPDF}
+                >
+                  <Text style={s.submitBtnText}>📄 ייצא רשימה</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.submitBtn, { backgroundColor: '#C62828', flex: 1 }]}
                   onPress={handleWithdraw}
