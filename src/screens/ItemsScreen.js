@@ -166,8 +166,8 @@ export default function ItemsScreen() {
       setEditAvailable(String(itemToEdit.available ?? itemToEdit.qty));
       setEditLocation(itemToEdit.location || '');
       setEditMinQty(itemToEdit.minQty ? String(itemToEdit.minQty) : '');
-      setEditSupplierCode(itemToEdit.supplierCode || '');
-      setEditSupplierName(itemToEdit.supplierName || '');
+      setEditSupplierCode(String(itemToEdit.supplierCode || ''));
+      setEditSupplierName(String(itemToEdit.supplierName || ''));
       setEditAltNames((itemToEdit.altNames || []).join(', '));
       setShowSupplierSection(false);
       setEditError('');
@@ -1058,12 +1058,4 @@ const s = StyleSheet.create({
   xlsxErrorText: { color: '#E65100', fontSize: 14, fontWeight: '600', textAlign: 'right' },
   xlsxSuggest: { fontSize: 13, color: '#E65100', fontWeight: '700', textAlign: 'right', marginBottom: 6 },
   xlsxBtnYes: { backgroundColor: '#2E7D32', paddingHorizontal: 18, paddingVertical: 7, borderRadius: 8 },
-  xlsxBtnYesText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  xlsxBtnNo: { backgroundColor: '#C62828', paddingHorizontal: 18, paddingVertical: 7, borderRadius: 8 },
-  xlsxBtnNoText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  btnDelete: {
-    marginTop: 12, padding: 12, borderRadius: 8, alignItems: 'center',
-    borderWidth: 1, borderColor: '#D32F2F', backgroundColor: '#FFF5F5',
-  },
-  btnDeleteText: { color: '#D32F2F', fontWeight: '700', fontSize: 14 },
-});
+  xlsxBtn
