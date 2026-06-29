@@ -38,6 +38,8 @@ export default function ItemsScreen() {
   const [editAltNames, setEditAltNames] = useState('');
   const [showSupplierSection, setShowSupplierSection] = useState(false);
   const [itemToEdit, setItemToEdit] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   // טופס הוספה
   const [newName, setNewName] = useState('');
@@ -168,6 +170,7 @@ export default function ItemsScreen() {
       setEditSupplierName(itemToEdit.supplierName || '');
       setEditAltNames((itemToEdit.altNames || []).join(', '));
       setShowSupplierSection(false);
+      setEditError('');
       setEditModal(true);
     } else {
       setPasswordError('סיסמא שגויה');
@@ -175,15 +178,17 @@ export default function ItemsScreen() {
   };
 
   const handleEditSave = async () => {
-    if (!editName.trim()) return Alert.alert('שגיאה', 'שם לא יכול להיות ריק');
+    setEditError('');
+    if (!editName.trim()) return setEditError('שם לא יכול להיות ריק');
     const totalQtyNum = Number(editQty);
     const availableNum = Number(editAvailable);
-    if (isNaN(totalQtyNum) || totalQtyNum < 0) return Alert.alert('שגיאה', 'כמות כוללת לא תקינה');
-    if (isNaN(availableNum) || availableNum < 0) return Alert.alert('שגיאה', 'כמות זמינה לא תקינה');
-    if (availableNum > totalQtyNum) return Alert.alert('שגיאה', 'כמות זמינה לא יכולה לעלות על הכוללת');
+    if (isNaN(totalQtyNum) || totalQtyNum < 0) return setEditError('כמות כוללת לא תקינה');
+    if (isNaN(availableNum) || availableNum < 0) return setEditError('כמות זמינה לא תקינה');
+    if (availableNum > totalQtyNum) return setEditError('כמות זמינה לא יכולה לעלות על הכוללת');
     const minQtyNum = editMinQty ? Number(editMinQty) : 0;
-    if (isNaN(minQtyNum) || minQtyNum < 0) return Alert.alert('שגיאה', 'כמות מינימלית לא תקינה');
+    if (isNaN(minQtyNum) || minQtyNum < 0) return setEditError('כמות מינימלית לא תקינה');
     try {
+      setIsSaving(true);
       await editItem({
         code: itemToEdit.code,
         name: editName.trim(),
@@ -196,9 +201,13 @@ export default function ItemsScreen() {
         altNames: editAltNames.split(',').map(s => s.trim()).filter(Boolean),
       });
       setEditModal(false);
-      Alert.alert('✓', 'הפריט עודכן בהצלחה');
+      setIsSaving(false);
+      setEditError('');
       load();
-    } catch (e) { Alert.alert('שגיאה', e.message); }
+    } catch (e) {
+      setIsSaving(false);
+      setEditError(e.message || 'שגיאה בשמירה — נסה שוב');
+    }
   };
 
   // ── יבוא אקסל ──
@@ -552,8 +561,8 @@ export default function ItemsScreen() {
       {/* ── מודאל עריכה ── */}
       <Modal visible={editModal} animationType="slide" transparent>
         <View style={s.overlay}>
-          <ScrollView>
-            <View style={s.modal}>
+          <View style={s.modal}>
+            <ScrollView>
               <Text style={s.modalTitle}>✏️ עריכת פריט</Text>
 
               <Text style={s.fieldLabel}>שם פריט</Text>
@@ -619,14 +628,21 @@ export default function ItemsScreen() {
                 </View>
               )}
 
-              <View style={s.btnRow}>
-                <TouchableOpacity style={s.btnSec} onPress={() => setEditModal(false)}>
-                  <Text style={s.btnSecText}>ביטול</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.btnPrim} onPress={handleEditSave}>
-                  <Text style={s.btnPrimText}>שמור</Text>
-                </TouchableOpacity>
-              </View>
+            </ScrollView>
+
+            {editError ? (
+              <Text style={{ color: '#C62828', textAlign: 'right', marginBottom: 8, fontSize: 14 }}>
+                ⚠️ {editError}
+              </Text>
+            ) : null}
+            <View style={s.btnRow}>
+              <TouchableOpacity style={s.btnSec} onPress={() => setEditModal(false)} disabled={isSaving}>
+                <Text style={s.btnSecText}>ביטול</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.btnPrim, isSaving && { opacity: 0.6 }]} onPress={handleEditSave} disabled={isSaving}>
+                <Text style={s.btnPrimText}>{isSaving ? 'שומר...' : 'שמור'}</Text>
+              </TouchableOpacity>
+            </View>
               <TouchableOpacity
                 style={s.btnDelete}
                 onPress={() => Alert.alert(
@@ -646,8 +662,7 @@ export default function ItemsScreen() {
                 )}>
                 <Text style={s.btnDeleteText}>🗑️ מחק פריט</Text>
               </TouchableOpacity>
-            </View>
-          </ScrollView>
+          </View>
         </View>
       </Modal>
 
