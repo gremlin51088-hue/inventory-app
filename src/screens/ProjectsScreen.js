@@ -655,7 +655,7 @@ export default function ProjectsScreen() {
               <View style={[s.modal, { maxHeight: '70%' }]}>
                 <Text style={s.modalTitle}>בחר פרויקט להיסטוריה</Text>
                 <FlatList
-                  data={projects}
+                  data={projects.filter(p => p.status === 'פעיל')}
                   keyExtractor={p => p.name}
                   renderItem={({ item: p }) => (
                     <TouchableOpacity style={s.projectPickItem} onPress={() => { setPickHistoryProjectModal(false); loadHistory(p); }}>
