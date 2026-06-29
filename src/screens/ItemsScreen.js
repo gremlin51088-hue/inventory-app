@@ -18,6 +18,7 @@ export default function ItemsScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [locationFilter, setLocationFilter] = useState(null);
+  const [locationModal, setLocationModal] = useState(false);
   const [addModal, setAddModal] = useState(false);
   const [detailModal, setDetailModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -392,21 +393,21 @@ export default function ItemsScreen() {
         </TouchableOpacity>
       </View>
       {locations.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.locationBar} contentContainerStyle={s.locationBarContent}>
+        <View style={s.locationBar}>
           <TouchableOpacity
-            style={[s.locationChip, !locationFilter && s.locationChipActive]}
-            onPress={() => setLocationFilter(null)}>
-            <Text style={[s.locationChipText, !locationFilter && s.locationChipTextActive]}>הכל</Text>
+            style={[s.locationPickBtn, locationFilter && s.locationPickBtnActive]}
+            onPress={() => setLocationModal(true)}>
+            <Text style={[s.locationPickBtnText, locationFilter && s.locationPickBtnTextActive]}>
+              📍 {locationFilter || 'כל המיקומים'}
+            </Text>
+            <Text style={[s.locationPickArrow, locationFilter && s.locationPickBtnTextActive]}>▼</Text>
           </TouchableOpacity>
-          {locations.map(loc => (
-            <TouchableOpacity
-              key={loc}
-              style={[s.locationChip, locationFilter === loc && s.locationChipActive]}
-              onPress={() => setLocationFilter(locationFilter === loc ? null : loc)}>
-              <Text style={[s.locationChipText, locationFilter === loc && s.locationChipTextActive]}>{loc}</Text>
+          {locationFilter && (
+            <TouchableOpacity onPress={() => setLocationFilter(null)} style={s.locationClearBtn}>
+              <Text style={s.locationClearText}>✕ נקה</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          )}
+        </View>
       )}
 
       {loading ? (
@@ -437,6 +438,29 @@ export default function ItemsScreen() {
           <Text style={s.fabText}>+ הוסף פריט</Text>
         </TouchableOpacity>
       </View>
+
+      {/* ── מודאל סינון מיקום ── */}
+      <Modal visible={locationModal} animationType="fade" transparent>
+        <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={() => setLocationModal(false)}>
+          <View style={[s.modal, { maxHeight: '60%' }]}>
+            <Text style={s.modalTitle}>📍 סינון לפי מיקום</Text>
+            <TouchableOpacity style={[s.locationOption, !locationFilter && s.locationOptionActive]}
+              onPress={() => { setLocationFilter(null); setLocationModal(false); }}>
+              <Text style={[s.locationOptionText, !locationFilter && s.locationOptionTextActive]}>הכל ({items.length} פריטים)</Text>
+              {!locationFilter && <Text style={s.locationOptionCheck}>✓</Text>}
+            </TouchableOpacity>
+            {locations.map(loc => (
+              <TouchableOpacity key={loc} style={[s.locationOption, locationFilter === loc && s.locationOptionActive]}
+                onPress={() => { setLocationFilter(loc); setLocationModal(false); }}>
+                <Text style={[s.locationOptionText, locationFilter === loc && s.locationOptionTextActive]}>
+                  {loc} ({items.filter(i => i.location === loc).length} פריטים)
+                </Text>
+                {locationFilter === loc && <Text style={s.locationOptionCheck}>✓</Text>}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ── מודאל הוספה ── */}
       <Modal visible={addModal} animationType="slide" transparent>
@@ -889,12 +913,19 @@ const s = StyleSheet.create({
   },
   logBtn: { backgroundColor: '#1565C0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
   logBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  locationBar: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEE', height: 44 },
-  locationBarContent: { paddingHorizontal: 10, paddingVertical: 6, flexDirection: 'row', alignItems: 'center' },
-  locationChip: { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, backgroundColor: '#F0F4FF', borderWidth: 1, borderColor: '#C5CAE9', marginLeft: 6 },
-  locationChipActive: { backgroundColor: '#1565C0', borderColor: '#1565C0' },
-  locationChipText: { fontSize: 13, fontWeight: '600', color: '#1565C0' },
-  locationChipTextActive: { color: '#fff' },
+  locationBar: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEE', paddingHorizontal: 12, paddingVertical: 7, flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  locationPickBtn: { flexDirection: 'row-reverse', alignItems: 'center', borderWidth: 1, borderColor: '#C5CAE9', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: '#F0F4FF' },
+  locationPickBtnActive: { backgroundColor: '#1565C0', borderColor: '#1565C0' },
+  locationPickBtnText: { fontSize: 13, fontWeight: '600', color: '#1565C0', marginLeft: 4 },
+  locationPickBtnTextActive: { color: '#fff' },
+  locationPickArrow: { fontSize: 10, color: '#1565C0' },
+  locationClearBtn: { paddingHorizontal: 10, paddingVertical: 6 },
+  locationClearText: { fontSize: 13, color: '#C62828', fontWeight: '600' },
+  locationOption: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: '#EEE' },
+  locationOptionActive: { },
+  locationOptionText: { fontSize: 15, color: '#333', textAlign: 'right' },
+  locationOptionTextActive: { color: '#1565C0', fontWeight: '700' },
+  locationOptionCheck: { fontSize: 16, color: '#1565C0', fontWeight: '700' },
   hint: { textAlign: 'right', color: '#777', fontSize: 13, marginBottom: 10 },
   actionRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
   actionBtn: { flex: 1, padding: 9, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#CCC' },
