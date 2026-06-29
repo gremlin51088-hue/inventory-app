@@ -154,8 +154,18 @@ export default function ItemsScreen() {
   // ── עריכה ──
   const openPasswordModal = (item) => {
     setItemToEdit(item);
-    setPasswordInput(''); setPasswordError('');
-    setDetailModal(false); setPasswordModal(true);
+    setDetailModal(false);
+    setEditName(item.name);
+    setEditQty(String(item.totalQty ?? item.qty));
+    setEditAvailable(String(item.available ?? item.qty));
+    setEditLocation(item.location || '');
+    setEditMinQty(item.minQty ? String(item.minQty) : '');
+    setEditSupplierCode(String(item.supplierCode || ''));
+    setEditSupplierName(String(item.supplierName || ''));
+    setEditAltNames((item.altNames || []).join(', '));
+    setShowSupplierSection(false);
+    setEditError('');
+    setEditModal(true);
   };
 
   const handlePasswordSubmit = () => {
