@@ -442,22 +442,24 @@ export default function ItemsScreen() {
       {/* ── מודאל סינון מיקום ── */}
       <Modal visible={locationModal} animationType="fade" transparent>
         <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={() => setLocationModal(false)}>
-          <View style={[s.modal, { maxHeight: '60%' }]}>
+          <View style={[s.modal, { maxHeight: '75%' }]}>
             <Text style={s.modalTitle}>📍 סינון לפי מיקום</Text>
-            <TouchableOpacity style={[s.locationOption, !locationFilter && s.locationOptionActive]}
-              onPress={() => { setLocationFilter(null); setLocationModal(false); }}>
-              <Text style={[s.locationOptionText, !locationFilter && s.locationOptionTextActive]}>הכל ({items.length} פריטים)</Text>
-              {!locationFilter && <Text style={s.locationOptionCheck}>✓</Text>}
-            </TouchableOpacity>
-            {locations.map(loc => (
-              <TouchableOpacity key={loc} style={[s.locationOption, locationFilter === loc && s.locationOptionActive]}
-                onPress={() => { setLocationFilter(loc); setLocationModal(false); }}>
-                <Text style={[s.locationOptionText, locationFilter === loc && s.locationOptionTextActive]}>
-                  {loc} ({items.filter(i => i.location === loc).length} פריטים)
-                </Text>
-                {locationFilter === loc && <Text style={s.locationOptionCheck}>✓</Text>}
+            <ScrollView>
+              <TouchableOpacity style={[s.locationOption, !locationFilter && s.locationOptionActive]}
+                onPress={() => { setLocationFilter(null); setLocationModal(false); }}>
+                <Text style={[s.locationOptionText, !locationFilter && s.locationOptionTextActive]}>הכל ({items.length} פריטים)</Text>
+                {!locationFilter && <Text style={s.locationOptionCheck}>✓</Text>}
               </TouchableOpacity>
-            ))}
+              {locations.map(loc => (
+                <TouchableOpacity key={loc} style={[s.locationOption, locationFilter === loc && s.locationOptionActive]}
+                  onPress={() => { setLocationFilter(loc); setLocationModal(false); }}>
+                  <Text style={[s.locationOptionText, locationFilter === loc && s.locationOptionTextActive]}>
+                    {loc} ({items.filter(i => i.location === loc).length} פריטים)
+                  </Text>
+                  {locationFilter === loc && <Text style={s.locationOptionCheck}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </Modal>
