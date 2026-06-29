@@ -6,7 +6,7 @@ import {
 import {
   getAllProjects, addProject, getAllItems,
   allocateToProject, getProjectAllocations,
-  withdrawFromProject, getProjectWithdrawals, returnToStock,
+  withdrawFromProject, getProjectWithdrawals, returnToStock, getLog,
   cancelProjectAllocation, updateProject,
 } from '../api';
 import { inventoryEvents } from '../storage';
@@ -60,6 +60,12 @@ export default function ProjectsScreen() {
   const [newProjectName, setNewProjectName] = useState('');
   const [searchPick, setSearchPick] = useState('');
 
+  // ---- היסטוריה ----
+  const [historyProject, setHistoryProject] = useState(null);
+  const [historyList, setHistoryList] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [pickHistoryProjectModal, setPickHistoryProjectModal] = useState(false);
+
   // ---- עריכת פרויקט ----
   const [editProjectModal, setEditProjectModal] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState(null);
@@ -73,6 +79,21 @@ export default function ProjectsScreen() {
       setItems(i.items || []);
     } catch {}
   }, []);
+
+  const loadHistory = async (project) => {
+    setHistoryProject(project);
+    setHistoryLoading(true);
+    setHistoryList([]);
+    try {
+      const { log } = await getLog();
+      const entries = (log || []).filter(e =>
+        e.action && e.action.includes(`— ${project.name}`) &&
+        (e.action.startsWith('משיכה') || e.action.startsWith('הקצאה'))
+      );
+      setHistoryList(entries);
+    } catch {}
+    finally { setHistoryLoading(false); }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -341,7 +362,7 @@ export default function ProjectsScreen() {
     <View style={s.container}>
       {/* טאבים */}
       <View style={s.tabs}>
-        {[['allocate','הקצאה'],['withdraw','משיכה'],['release','החזרה'],['projects','פרויקטים']].map(([key, label]) => (
+        {[['allocate','הקצאה'],['withdraw','משיכה'],['release','החזרה'],['history','היסטוריה'],['projects','פרויקטים']].map(([key, label]) => (
           <TouchableOpacity key={key} style={[s.tab, tab === key && s.tabActive]} onPress={() => setTab(key)}>
             <Text style={[s.tabText, tab === key && s.tabTextActive]}>{label}</Text>
           </TouchableOpacity>
@@ -596,6 +617,62 @@ export default function ProjectsScreen() {
         </ScrollView>
       )}
 
+      {/* ===== טאב היסטוריה ===== */}
+      {tab === 'history' && (
+        <View style={{ flex: 1 }}>
+          <View style={{ padding: 12, flexDirection: 'row-reverse', gap: 8 }}>
+            <TouchableOpacity style={s.pickBtn} onPress={() => setPickHistoryProjectModal(true)}>
+              <Text style={s.pickBtnText}>{historyProject ? `📁 ${historyProject.name}` : '📁 בחר פרויקט'}</Text>
+            </TouchableOpacity>
+          </View>
+          {historyLoading && <Text style={{ textAlign: 'center', color: '#888', marginTop: 20 }}>טוען...</Text>}
+          {!historyLoading && historyProject && historyList.length === 0 && (
+            <Text style={s.empty}>אין היסטוריית משיכות לפרויקט זה</Text>
+          )}
+          {historyList.length > 0 && (
+            <FlatList
+              data={historyList}
+              keyExtractor={(_, i) => String(i)}
+              contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
+              renderItem={({ item: entry }) => (
+                <View style={s.historyCard}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.historyName}>{entry.name}</Text>
+                    <Text style={s.historyAction}>{entry.action}</Text>
+                    {entry.note ? <Text style={s.historyNote}>קבלן: {entry.note}</Text> : null}
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={s.historyQty}>{entry.amount} יח'</Text>
+                    <Text style={s.historyTime}>{entry.time}</Text>
+                  </View>
+                </View>
+              )}
+            />
+          )}
+          {/* מודאל בחירת פרויקט להיסטוריה */}
+          <Modal visible={pickHistoryProjectModal} animationType="slide" transparent>
+            <View style={s.overlay}>
+              <View style={[s.modal, { maxHeight: '70%' }]}>
+                <Text style={s.modalTitle}>בחר פרויקט להיסטוריה</Text>
+                <FlatList
+                  data={projects}
+                  keyExtractor={p => p.name}
+                  renderItem={({ item: p }) => (
+                    <TouchableOpacity style={s.projectPickItem} onPress={() => { setPickHistoryProjectModal(false); loadHistory(p); }}>
+                      <Text style={s.projectPickName}>{p.name}</Text>
+                      <Text style={s.projectPickStatus}>{p.status}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+                <TouchableOpacity style={s.btnSec} onPress={() => setPickHistoryProjectModal(false)}>
+                  <Text style={s.btnSecText}>סגור</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        </View>
+      )}
+
       {/* ===== טאב פרויקטים ===== */}
       {tab === 'projects' && (
         <View style={{ flex: 1 }}>
@@ -848,6 +925,15 @@ const s = StyleSheet.create({
   },
   newProjInlineBtnText: { color: '#2E7D32', fontWeight: '700', fontSize: 13 },
 
+  historyCard: { backgroundColor: '#fff', borderRadius: 10, padding: 12, marginBottom: 8, flexDirection: 'row-reverse', justifyContent: 'space-between', elevation: 1, borderRightWidth: 4, borderRightColor: '#C62828' },
+  historyName: { fontSize: 14, fontWeight: '700', color: '#1a1a2e', textAlign: 'right' },
+  historyAction: { fontSize: 12, color: '#555', textAlign: 'right', marginTop: 2 },
+  historyNote: { fontSize: 12, color: '#1565C0', textAlign: 'right', marginTop: 2 },
+  historyQty: { fontSize: 16, fontWeight: '800', color: '#C62828', textAlign: 'left' },
+  historyTime: { fontSize: 11, color: '#999', textAlign: 'left', marginTop: 2 },
+  projectPickItem: { flexDirection: 'row-reverse', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#EEE' },
+  projectPickName: { fontSize: 15, color: '#1a1a2e', fontWeight: '600' },
+  projectPickStatus: { fontSize: 13, color: '#888' },
   pickBtn: { borderWidth: 1, borderColor: '#1565C0', borderRadius: 8, padding: 11, marginBottom: 10 },
   pickBtnText: { textAlign: 'right', color: '#1565C0', fontSize: 15 },
   input: { borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 10, marginBottom: 10, fontSize: 15 },

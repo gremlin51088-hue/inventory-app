@@ -17,6 +17,7 @@ export default function ItemsScreen() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [locationFilter, setLocationFilter] = useState(null);
   const [addModal, setAddModal] = useState(false);
   const [detailModal, setDetailModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -88,9 +89,13 @@ export default function ItemsScreen() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { return inventoryEvents.subscribe(() => load()); }, [load]);
 
-  const filtered = items.filter(i =>
-    i.name?.includes(search) || String(i.code)?.includes(search)
-  );
+  const locations = [...new Set(items.map(i => i.location).filter(Boolean))].sort();
+
+  const filtered = items.filter(i => {
+    const matchSearch = !search || i.name?.includes(search) || String(i.code)?.includes(search);
+    const matchLocation = !locationFilter || i.location === locationFilter;
+    return matchSearch && matchLocation;
+  });
 
   // ── הוספת פריט ──
   const handleAdd = async () => {
@@ -310,6 +315,22 @@ export default function ItemsScreen() {
           amount: row.כמות,
           note: `יבוא תעודה — ${row.מקט}`,
         });
+        // שמור מקט ספק אם לא היה קיים
+        if (!row.matchedItem.supplierCode) {
+          try {
+            await editItem({
+              code: row.matchedItem.code,
+              name: row.matchedItem.name,
+              location: row.matchedItem.location || '',
+              totalQty: row.matchedItem.totalQty,
+              available: row.matchedItem.available,
+              minQty: row.matchedItem.minQty || 0,
+              supplierCode: row.מקט,
+              supplierName: row.matchedItem.supplierName || '',
+              altNames: row.matchedItem.altNames || [],
+            });
+          } catch {}
+        }
         done++;
         setXlsxProgress(`מעדכן... ${done}/${total}`);
       } catch {}
@@ -370,6 +391,23 @@ export default function ItemsScreen() {
           <Text style={s.logBtnText}>📋 יומן</Text>
         </TouchableOpacity>
       </View>
+      {locations.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.locationBar} contentContainerStyle={s.locationBarContent}>
+          <TouchableOpacity
+            style={[s.locationChip, !locationFilter && s.locationChipActive]}
+            onPress={() => setLocationFilter(null)}>
+            <Text style={[s.locationChipText, !locationFilter && s.locationChipTextActive]}>הכל</Text>
+          </TouchableOpacity>
+          {locations.map(loc => (
+            <TouchableOpacity
+              key={loc}
+              style={[s.locationChip, locationFilter === loc && s.locationChipActive]}
+              onPress={() => setLocationFilter(locationFilter === loc ? null : loc)}>
+              <Text style={[s.locationChipText, locationFilter === loc && s.locationChipTextActive]}>{loc}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       {loading ? (
         <ActivityIndicator size="large" color="#1565C0" style={{ marginTop: 40 }} />
@@ -851,6 +889,12 @@ const s = StyleSheet.create({
   },
   logBtn: { backgroundColor: '#1565C0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
   logBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  locationBar: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEE', maxHeight: 44 },
+  locationBarContent: { paddingHorizontal: 10, paddingVertical: 6, gap: 6, flexDirection: 'row' },
+  locationChip: { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, backgroundColor: '#F0F4FF', borderWidth: 1, borderColor: '#C5CAE9' },
+  locationChipActive: { backgroundColor: '#1565C0', borderColor: '#1565C0' },
+  locationChipText: { fontSize: 13, fontWeight: '600', color: '#1565C0' },
+  locationChipTextActive: { color: '#fff' },
   hint: { textAlign: 'right', color: '#777', fontSize: 13, marginBottom: 10 },
   actionRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
   actionBtn: { flex: 1, padding: 9, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#CCC' },
