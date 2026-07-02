@@ -9,7 +9,7 @@ import {
   withdrawFromProject, getProjectWithdrawals, returnToStock, getLog,
   cancelProjectAllocation, updateProject,
 } from '../api';
-import { inventoryEvents } from '../storage';
+import { storage, inventoryEvents } from '../storage';
 
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
@@ -65,6 +65,9 @@ export default function ProjectsScreen() {
   const [historyList, setHistoryList] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [pickHistoryProjectModal, setPickHistoryProjectModal] = useState(false);
+
+  // ---- רשימת ציוד נוסף ----
+  const [missingItems, setMissingItems] = useState([]);
 
   // ---- עריכת פרויקט ----
   const [editProjectModal, setEditProjectModal] = useState(false);
@@ -282,11 +285,51 @@ export default function ProjectsScreen() {
 
   useEffect(() => { loadSelProjectAllocs(selProject); }, [selProject, loadSelProjectAllocs]);
 
+  // טעינת רשימת חסרים לפרויקט הנבחר
+  useEffect(() => {
+    if (!selProject) { setMissingItems([]); return; }
+    storage.getItem(`missing_${selProject.name}`)
+      .then(str => setMissingItems(JSON.parse(str || '[]')))
+      .catch(() => setMissingItems([]));
+  }, [selProject]);
+
+  const saveMissing = async (list) => {
+    if (!selProject) return;
+    await storage.setItem(`missing_${selProject.name}`, JSON.stringify(list));
+  };
+
+  const removeMissingItem = async (idx) => {
+    const updated = missingItems.filter((_, i) => i !== idx);
+    setMissingItems(updated);
+    await saveMissing(updated);
+  };
+
+  // הוספה לרשימת ציוד נוסף מתוך picker כשאין תוצאות
+  const addToMissingFromSearch = async () => {
+    const name = searchPick.trim();
+    if (!name || !selProject) return;
+    const updated = [...missingItems, { name, qty: Number(qty) || 1 }];
+    setMissingItems(updated);
+    await saveMissing(updated);
+    setPickItemModal(false);
+    setSearchPick('');
+  };
+
   // ---- הקצאה ----
   const handleAction = async () => {
     if (!selProject) return Alert.alert('שגיאה', 'בחר פרויקט');
     if (!selItem) return Alert.alert('שגיאה', 'בחר פריט');
     if (!qty || isNaN(qty) || Number(qty) <= 0) return Alert.alert('שגיאה', 'הכנס כמות חיובית');
+
+    // פריט בכמות אפס — עובר לרשימת ציוד נוסף במקום שגיאה
+    if ((selItem.available ?? selItem.qty ?? 0) === 0) {
+      const updated = [...missingItems, { name: selItem.name, qty: Number(qty) }];
+      setMissingItems(updated);
+      await saveMissing(updated);
+      setQty(''); setNote('');
+      return;
+    }
+
     setLoading(true);
     try {
       await allocateToProject({ code: selItem.code, projectName: selProject.name, qty: Number(qty), note });
@@ -418,6 +461,22 @@ export default function ProjectsScreen() {
           )}
           {selProject && selProjectAllocs.length === 0 && (
             <Text style={[s.empty, { marginTop: 16 }]}>אין הקצאות פעילות לפרויקט זה</Text>
+          )}
+
+          {/* רשימת ציוד נוסף */}
+          {selProject && missingItems.length > 0 && (
+            <View style={s.missingCard}>
+              <Text style={s.missingTitle}>🔴 ציוד נוסף — {selProject.name}</Text>
+              {missingItems.map((item, idx) => (
+                <View key={idx} style={s.missingRow}>
+                  <TouchableOpacity onPress={() => removeMissingItem(idx)} style={s.missingRemoveBtn}>
+                    <Text style={s.missingRemoveBtnText}>✕</Text>
+                  </TouchableOpacity>
+                  <Text style={s.missingName}>{item.name}</Text>
+                  <Text style={s.missingQty}>{item.qty} יח'</Text>
+                </View>
+              ))}
+            </View>
           )}
         </ScrollView>
       )}
@@ -775,6 +834,13 @@ export default function ProjectsScreen() {
                   <Text style={s.pickItemSub}>#{item.code} · זמין: {item.available ?? item.qty}</Text>
                 </TouchableOpacity>
               )}
+              ListEmptyComponent={
+                searchPick.trim() && selProject ? (
+                  <TouchableOpacity style={s.addMissingFromSearchBtn} onPress={addToMissingFromSearch}>
+                    <Text style={s.addMissingFromSearchText}>➕ הוסף "{searchPick.trim()}" לרשימת ציוד נוסף</Text>
+                  </TouchableOpacity>
+                ) : null
+              }
             />
             <TouchableOpacity style={s.btnSec} onPress={() => { setPickItemModal(false); setSearchPick(''); }}>
               <Text style={s.btnSecText}>סגור</Text>
@@ -1038,4 +1104,28 @@ const s = StyleSheet.create({
   allocListQty: { fontSize: 14, fontWeight: '700', color: '#1565C0', minWidth: 60, textAlign: 'left' },
   allocListTotal: { marginTop: 8, alignItems: 'flex-end' },
   allocListTotalText: { fontSize: 13, color: '#888', fontWeight: '600' },
+
+  // רשימת חסרים
+  missingCard: {
+    backgroundColor: '#FFFDE7', borderRadius: 12, marginTop: 12,
+    padding: 14, borderRightWidth: 4, borderRightColor: '#F57C00',
+  },
+  missingTitle: { fontSize: 14, fontWeight: '700', color: '#E65100', textAlign: 'right', marginBottom: 8 },
+  missingEmpty: { fontSize: 13, color: '#AAA', textAlign: 'center', marginBottom: 6 },
+  missingRow: {
+    flexDirection: 'row-reverse', alignItems: 'center',
+    paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#FFE082',
+  },
+  missingName: { fontSize: 14, color: '#1a1a2e', flex: 1, textAlign: 'right' },
+  missingQty: { fontSize: 14, fontWeight: '700', color: '#E65100', minWidth: 55, textAlign: 'left' },
+  missingRemoveBtn: {
+    width: 26, height: 26, borderRadius: 13, backgroundColor: '#FFEBEE',
+    alignItems: 'center', justifyContent: 'center', marginLeft: 6,
+  },
+  missingRemoveBtnText: { fontSize: 12, fontWeight: '700', color: '#C62828' },
+  addMissingFromSearchBtn: {
+    margin: 8, padding: 14, backgroundColor: '#FFF3E0',
+    borderRadius: 10, borderWidth: 1, borderColor: '#FFB74D', alignItems: 'center',
+  },
+  addMissingFromSearchText: { color: '#E65100', fontWeight: '700', fontSize: 14 },
 });
