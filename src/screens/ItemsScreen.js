@@ -335,22 +335,6 @@ export default function ItemsScreen() {
           amount: row.כמות,
           note: `יבוא תעודה — ${row.מקט}`,
         });
-        // שמור מקט ספק אם לא היה קיים
-        if (!row.matchedItem.supplierCode) {
-          try {
-            await editItem({
-              code: row.matchedItem.code,
-              name: row.matchedItem.name,
-              location: row.matchedItem.location || '',
-              totalQty: row.matchedItem.totalQty,
-              available: row.matchedItem.available,
-              minQty: row.matchedItem.minQty || 0,
-              supplierCode: row.מקט,
-              supplierName: row.matchedItem.supplierName || '',
-              altNames: row.matchedItem.altNames || [],
-            });
-          } catch {}
-        }
         done++;
         setXlsxProgress(`מעדכן... ${done}/${total}`);
       } catch {}
