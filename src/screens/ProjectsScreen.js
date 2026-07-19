@@ -390,9 +390,10 @@ export default function ProjectsScreen() {
     } catch (e) { Alert.alert('שגיאה', e.message); }
   };
 
-  const filteredItems = items.filter(i =>
-    i.name?.includes(searchPick) || String(i.code)?.includes(searchPick)
-  );
+  const filteredItems = items.filter(i => {
+    const q = searchPick.trim().toLowerCase();
+    return !q || i.name?.toLowerCase().includes(q) || String(i.code).includes(q);
+  });
 
   // פרויקטים פעילים עם הקצאות — רק אלה שיש מה למשוך
   const projectsWithAllocations = React.useMemo(() => {

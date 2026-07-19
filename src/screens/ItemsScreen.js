@@ -95,7 +95,8 @@ export default function ItemsScreen() {
   const locations = [...new Set(items.map(i => i.location).filter(Boolean))].sort();
 
   const filtered = items.filter(i => {
-    const matchSearch = !search || i.name?.includes(search) || String(i.code)?.includes(search);
+    const q = search.trim().toLowerCase();
+    const matchSearch = !q || i.name?.toLowerCase().includes(q) || String(i.code).includes(q);
     const matchLocation = !locationFilter || i.location === locationFilter;
     return matchSearch && matchLocation;
   });
