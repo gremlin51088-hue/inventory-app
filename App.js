@@ -116,6 +116,7 @@ export default function App() {
       <AuthGate>
         <NavigationContainer>
           <Tab.Navigator
+            detachInactiveScreens={false}
             screenOptions={({ route }) => ({
               headerStyle: { backgroundColor: '#1565C0' },
               headerTintColor: '#fff',
