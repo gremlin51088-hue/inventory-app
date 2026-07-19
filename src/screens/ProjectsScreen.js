@@ -627,13 +627,9 @@ export default function ProjectsScreen() {
               <View style={s.sectionHeader}>
                 <Text style={s.sectionTitle}>↩ נמשכו — סמן מה חוזר פיזית למחסן</Text>
               </View>
-              <FlatList
-                data={releaseList}
-                keyExtractor={i => String(i.code)}
-                scrollEnabled={false}
-                contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 16 }}
-                renderItem={({ item }) => (
-                  <View style={[s.withdrawCard, item.selected && s.withdrawCardSelected]}>
+              <View style={{ paddingHorizontal: 12, paddingBottom: 16 }}>
+                {releaseList.map(item => (
+                  <View key={String(item.code)} style={[s.withdrawCard, item.selected && s.withdrawCardSelected]}>
                     <TouchableOpacity style={s.withdrawRow} onPress={() => toggleReleaseSelected(item.code)}>
                       <View style={[s.checkbox, item.selected && s.checkboxSelected]}>
                         {item.selected && <Text style={s.checkmark}>✓</Text>}
@@ -659,8 +655,8 @@ export default function ProjectsScreen() {
                       </View>
                     </View>
                   </View>
-                )}
-              />
+                ))}
+              </View>
               <View style={{ paddingHorizontal: 12, paddingTop: 8 }}>
                 <TouchableOpacity
                   style={[s.submitBtn, { backgroundColor: '#2E7D32' }]}
