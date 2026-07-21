@@ -55,6 +55,7 @@ function initSheets() {
   ensureSheet('Log',              ['time','action','code','name','amount','totalQty','available','note']);
   ensureSheet('Config',           ['key','value']);
   ensureSheet('SupplierMappings', ['supplierCode','supplierName','itemCode','itemName','addedDate']);
+  ensureSheet('MissingItems',     ['project','name','qty']);
   const cfg = ss.getSheetByName('Config');
   if (cfg.getLastRow() <= 1) cfg.appendRow(['nextCode','1']);
 }
@@ -132,6 +133,41 @@ function saveProjects_(projects) {
   sh.getRange(2, 1, projects.length, 3).setValues(
     projects.map(p => [p.name, p.status || 'פעיל', p.date || ''])
   );
+}
+
+// ---- MissingItems helpers (רשימת ציוד נוסף לפרויקט — משותפת בין מכשירים) ----
+function getMissingItems_(projectName) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('MissingItems');
+  if (sh.getLastRow() <= 1) return [];
+  const data = sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues();
+  const result = [];
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] === '') continue;
+    if (data[i][0] === projectName) {
+      result.push({ id: i + 2, name: data[i][1], qty: Number(data[i][2]) || 1 });
+    }
+  }
+  return result;
+}
+function addMissingItem_(p) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('MissingItems');
+  sh.appendRow([p.projectName, p.name, Number(p.qty) || 1]);
+}
+function removeMissingItem_(p) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('MissingItems');
+  const row = Number(p.id);
+  if (row >= 2 && row <= sh.getLastRow()) sh.deleteRow(row);
+}
+function renameMissingItemsProject_(oldName, newName) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('MissingItems');
+  if (!sh || sh.getLastRow() <= 1) return;
+  const range = sh.getRange(2, 1, sh.getLastRow() - 1, 1);
+  const vals = range.getValues();
+  let changed = false;
+  vals.forEach((row, i) => {
+    if (row[0] === oldName) { vals[i][0] = newName; changed = true; }
+  });
+  if (changed) range.setValues(vals);
 }
 
 // ---- Log helpers ----
@@ -327,6 +363,7 @@ function route(p) {
         if (a.project === oldName) a.project = p.newName;
       }));
       saveItems_(items);
+      renameMissingItemsProject_(oldName, p.newName);
       // עדכון שמות ביומן
       try {
         const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Log');
@@ -389,6 +426,20 @@ function route(p) {
     return getSuppliers_();
   }
 
+  if (action === 'getMissingItems') {
+    return { items: getMissingItems_(p.projectName) };
+  }
+
+  if (action === 'addMissingItem') {
+    addMissingItem_(p);
+    return { success: true };
+  }
+
+  if (action === 'removeMissingItem') {
+    removeMissingItem_(p);
+    return { success: true };
+  }
+
   return {};
 }
 
@@ -432,4 +483,80 @@ function addSupplierMapping_(p) {
   const date = Utilities.formatDate(new Date(), tz, 'dd/MM/yyyy HH:mm:ss');
   sh.appendRow([p.supplierCode, p.supplierName, p.itemCode, p.itemName, date]);
   return { success: true };
+}
+
+// ================================================================
+// תיקון באג יבוא — הרץ פעם אחת מה-Apps Script Editor
+// ================================================================
+function fixImportBug() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const logSh = ss.getSheetByName('Log');
+  if (!logSh || logSh.getLastRow() <= 1) {
+    Browser.msgBox('היומן ריק — אין מה לתקן');
+    return;
+  }
+
+  const data = logSh.getRange(2, 1, logSh.getLastRow() - 1, 8).getValues();
+  // עמודות: 0=time,1=action,2=code,3=name,4=amount,5=totalQty,6=available,7=note
+
+  const corrections = {}; // code → amount to add back
+
+  for (let i = 0; i < data.length - 1; i++) {
+    const curr = data[i];
+    const next = data[i + 1];
+    const currAction = String(curr[1]);
+    const nextAction = String(next[1]);
+    const currNote   = String(curr[7]);
+    const nextNote   = String(next[7]);
+
+    // זיהוי זוג: עריכה ידנית (הבאג) ← מיד אחרי כניסה מיבוא תעודה
+    if (
+      currAction === 'עריכה ידנית' &&
+      nextAction === 'כניסה' &&
+      nextNote.startsWith('יבוא תעודה') &&
+      String(curr[2]) === String(next[2])  // אותו קוד פריט
+    ) {
+      const code = String(curr[2]);
+      const addedQty = Number(next[4]); // הכמות שיובאה ואיבדנו
+      corrections[code] = (corrections[code] || 0) + addedQty;
+    }
+  }
+
+  if (Object.keys(corrections).length === 0) {
+    Browser.msgBox('לא נמצאו פריטים שנפגעו מהבאג ✅');
+    return;
+  }
+
+  // תיקון בפועל
+  const items = getAllItems_();
+  let fixedCount = 0;
+  for (const [code, addBack] of Object.entries(corrections)) {
+    const item = items.find(i => String(i.code) === code);
+    if (!item) continue;
+    const before = item.totalQty;
+    item.totalQty += addBack;
+    item.available += addBack;
+    item.qty = item.totalQty;
+    writeLog_('תיקון באג יבוא', item, addBack,
+      `תיקון אוטומטי: ${before}→${item.totalQty}`);
+    fixedCount++;
+  }
+  saveItems_(items);
+
+  // דוח
+  const lines = Object.entries(corrections).map(([code, qty]) => {
+    const item = items.find(i => String(i.code) === code);
+    return `${item ? item.name : code}: +${qty} יח'`;
+  }).join('\n');
+
+  Browser.msgBox(`✅ תוקנו ${fixedCount} פריטים:\n\n${lines}`);
+}
+
+function getSuppliers_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('SupplierMappings');
+  if (!sh || sh.getLastRow() <= 1) return { suppliers: [] };
+  const data = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+  const set = new Set();
+  data.forEach(r => { if (r[1]) set.add(String(r[1])); });
+  return { suppliers: Array.from(set) };
 }

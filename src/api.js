@@ -241,8 +241,40 @@ async function handleDemo(payload) {
         });
         await storage.setItem('inv_log', JSON.stringify(log));
       } catch {}
+      // עדכון רשימת ציוד נוסף (demo mode)
+      try {
+        const str = await storage.getItem(`missing_${oldName}`);
+        if (str) {
+          await storage.setItem(`missing_${payload.newName}`, str);
+        }
+      } catch {}
     }
     await saveProjects(projects);
+    return { success: true };
+  }
+  if (action === 'getMissingItems') {
+    try {
+      const str = await storage.getItem(`missing_${payload.projectName}`);
+      const list = JSON.parse(str || '[]');
+      return { items: list.map((it, i) => ({ id: i, ...it })) };
+    } catch { return { items: [] }; }
+  }
+  if (action === 'addMissingItem') {
+    try {
+      const str = await storage.getItem(`missing_${payload.projectName}`);
+      const list = JSON.parse(str || '[]');
+      list.push({ name: payload.name, qty: Number(payload.qty) || 1 });
+      await storage.setItem(`missing_${payload.projectName}`, JSON.stringify(list));
+    } catch {}
+    return { success: true };
+  }
+  if (action === 'removeMissingItem') {
+    try {
+      const str = await storage.getItem(`missing_${payload.projectName}`);
+      const list = JSON.parse(str || '[]');
+      list.splice(Number(payload.id), 1);
+      await storage.setItem(`missing_${payload.projectName}`, JSON.stringify(list));
+    } catch {}
     return { success: true };
   }
   return {};
@@ -265,6 +297,10 @@ export function getProjectAllocations(projectName) { return call({ action: 'getP
 export function cancelProjectAllocation({ code, projectName, qty }) { return call({ action: 'cancelAllocation', code, projectName, qty }); }
 export function updateProject({ oldName, newName, status }) { return call({ action: 'editProject', oldName, newName, status }); }
 export function returnToStock({ code, qty, projectName, note = '' }) { return call({ action: 'returnToStock', code, qty, projectName, note }); }
+
+export function getMissingItems(projectName) { return call({ action: 'getMissingItems', projectName }); }
+export function addMissingItem({ projectName, name, qty }) { return call({ action: 'addMissingItem', projectName, name, qty }); }
+export function removeMissingItem({ projectName, id }) { return call({ action: 'removeMissingItem', projectName, id }); }
 
 export async function getLog() {
   if (!DEMO_MODE) return call({ action: 'getLog' });

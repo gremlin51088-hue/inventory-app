@@ -8,8 +8,11 @@ import {
   allocateToProject, getProjectAllocations,
   withdrawFromProject, getProjectWithdrawals, returnToStock, getLog,
   cancelProjectAllocation, updateProject,
+  getMissingItems as apiGetMissingItems,
+  addMissingItem as apiAddMissingItem,
+  removeMissingItem as apiRemoveMissingItem,
 } from '../api';
-import { storage, inventoryEvents } from '../storage';
+import { inventoryEvents } from '../storage';
 
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
@@ -285,32 +288,34 @@ export default function ProjectsScreen() {
 
   useEffect(() => { loadSelProjectAllocs(selProject); }, [selProject, loadSelProjectAllocs]);
 
-  // טעינת רשימת חסרים לפרויקט הנבחר
-  useEffect(() => {
-    if (!selProject) { setMissingItems([]); return; }
-    storage.getItem(`missing_${selProject.name}`)
-      .then(str => setMissingItems(JSON.parse(str || '[]')))
-      .catch(() => setMissingItems([]));
-  }, [selProject]);
+  // טעינת רשימת חסרים לפרויקט הנבחר — מהשרת, כדי שתסתנכרן בין מכשירים
+  const loadMissingItems = useCallback(async (project) => {
+    if (!project) { setMissingItems([]); return; }
+    try {
+      const data = await apiGetMissingItems(project.name);
+      setMissingItems(data.items || []);
+    } catch { setMissingItems([]); }
+  }, []);
 
-  const saveMissing = async (list) => {
+  useEffect(() => { loadMissingItems(selProject); }, [selProject, loadMissingItems]);
+
+  const removeMissingItem = async (id) => {
     if (!selProject) return;
-    await storage.setItem(`missing_${selProject.name}`, JSON.stringify(list));
-  };
-
-  const removeMissingItem = async (idx) => {
-    const updated = missingItems.filter((_, i) => i !== idx);
-    setMissingItems(updated);
-    await saveMissing(updated);
+    setMissingItems(list => list.filter(i => i.id !== id));
+    try {
+      await apiRemoveMissingItem({ projectName: selProject.name, id });
+    } catch {}
+    await loadMissingItems(selProject);
   };
 
   // הוספה לרשימת ציוד נוסף מתוך picker כשאין תוצאות
   const addToMissingFromSearch = async () => {
     const name = searchPick.trim();
     if (!name || !selProject) return;
-    const updated = [...missingItems, { name, qty: Number(qty) || 1 }];
-    setMissingItems(updated);
-    await saveMissing(updated);
+    try {
+      await apiAddMissingItem({ projectName: selProject.name, name, qty: Number(qty) || 1 });
+    } catch {}
+    await loadMissingItems(selProject);
     setPickItemModal(false);
     setSearchPick('');
   };
@@ -323,9 +328,10 @@ export default function ProjectsScreen() {
 
     // פריט בכמות אפס — עובר לרשימת ציוד נוסף במקום שגיאה
     if ((selItem.available ?? selItem.qty ?? 0) === 0) {
-      const updated = [...missingItems, { name: selItem.name, qty: Number(qty) }];
-      setMissingItems(updated);
-      await saveMissing(updated);
+      try {
+        await apiAddMissingItem({ projectName: selProject.name, name: selItem.name, qty: Number(qty) });
+      } catch {}
+      await loadMissingItems(selProject);
       setQty(''); setNote('');
       return;
     }
@@ -469,8 +475,8 @@ export default function ProjectsScreen() {
             <View style={s.missingCard}>
               <Text style={s.missingTitle}>🔴 ציוד נוסף — {selProject.name}</Text>
               {missingItems.map((item, idx) => (
-                <View key={idx} style={s.missingRow}>
-                  <TouchableOpacity onPress={() => removeMissingItem(idx)} style={s.missingRemoveBtn}>
+                <View key={item.id ?? idx} style={s.missingRow}>
+                  <TouchableOpacity onPress={() => removeMissingItem(item.id)} style={s.missingRemoveBtn}>
                     <Text style={s.missingRemoveBtnText}>✕</Text>
                   </TouchableOpacity>
                   <Text style={s.missingName}>{item.name}</Text>
