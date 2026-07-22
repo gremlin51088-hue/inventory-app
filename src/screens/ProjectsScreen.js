@@ -147,7 +147,7 @@ export default function ProjectsScreen() {
       setReleaseList((withdrawn.withdrawals || []).map(w => ({
         code: w.code, name: w.name,
         totalWithdrawn: w.totalWithdrawn,
-        returnQty: '', selected: false,
+        returnQty: String(w.totalWithdrawn), selected: false,
       })));
       const allocs = await getProjectAllocations(project.name);
       setAllocatedList(allocs.allocations || []);
@@ -209,7 +209,7 @@ export default function ProjectsScreen() {
       const withdrawn = await getProjectWithdrawals(releaseProject.name);
       setReleaseList((withdrawn.withdrawals || []).map(w => ({
         code: w.code, name: w.name, totalWithdrawn: w.totalWithdrawn,
-        returnQty: '', selected: false,
+        returnQty: String(w.totalWithdrawn), selected: false,
       })));
       const allocs = await getProjectAllocations(releaseProject.name);
       setAllocatedList(allocs.allocations || []);
@@ -660,6 +660,15 @@ export default function ProjectsScreen() {
             <>
               <View style={s.sectionHeader}>
                 <Text style={s.sectionTitle}>↩ נמשכו — סמן מה חוזר פיזית למחסן</Text>
+              </View>
+              <View style={s.selectRow}>
+                <TouchableOpacity style={s.selectBtn} onPress={() => toggleReleaseAll(true)}>
+                  <Text style={s.selectBtnText}>בחר הכל</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.selectBtn} onPress={() => toggleReleaseAll(false)}>
+                  <Text style={s.selectBtnText}>בטל הכל</Text>
+                </TouchableOpacity>
+                <Text style={s.selectedCount}>{releaseList.filter(i => i.selected).length}/{releaseList.length} נבחרו</Text>
               </View>
               <View style={{ paddingHorizontal: 12, paddingBottom: 16 }}>
                 {releaseList.map(item => (
