@@ -163,6 +163,19 @@ async function handleDemo(payload) {
     await saveItems(items);
     return { success: true };
   }
+  if (action === 'undoWithdrawal') {
+    const item = items.find(i => i.code == payload.code);
+    if (!item) throw new Error('פריט לא נמצא');
+    const amt = Number(payload.qty);
+    item.totalQty += amt;
+    const alloc = item.allocations.find(a => a.project === payload.projectName);
+    if (alloc) alloc.qty += amt;
+    else item.allocations.push({ project: payload.projectName, qty: amt });
+    recalcAvailable(item);
+    await writeLog(`ביטול משיכה — ${payload.projectName}`, item, amt, payload.note || '');
+    await saveItems(items);
+    return { success: true };
+  }
   if (action === 'getAllProjects') {
     return { projects };
   }
@@ -297,6 +310,7 @@ export function getProjectAllocations(projectName) { return call({ action: 'getP
 export function cancelProjectAllocation({ code, projectName, qty }) { return call({ action: 'cancelAllocation', code, projectName, qty }); }
 export function updateProject({ oldName, newName, status }) { return call({ action: 'editProject', oldName, newName, status }); }
 export function returnToStock({ code, qty, projectName, note = '' }) { return call({ action: 'returnToStock', code, qty, projectName, note }); }
+export function undoWithdrawal({ code, qty, projectName, note = '' }) { return call({ action: 'undoWithdrawal', code, qty, projectName, note }); }
 
 export function getMissingItems(projectName) { return call({ action: 'getMissingItems', projectName }); }
 export function addMissingItem({ projectName, name, qty }) { return call({ action: 'addMissingItem', projectName, name, qty }); }
@@ -327,7 +341,7 @@ export async function getProjectWithdrawals(projectName) {
       if (!map[l.code]) map[l.code] = { code: l.code, name: l.name, totalWithdrawn: 0 };
       map[l.code].totalWithdrawn += l.amount;
     });
-    log.filter(l => l.action === `שחרור — ${projectName}`).forEach(l => {
+    log.filter(l => l.action === `שחרור — ${projectName}` || l.action === `ביטול משיכה — ${projectName}`).forEach(l => {
       if (map[l.code]) map[l.code].totalWithdrawn = Math.max(0, map[l.code].totalWithdrawn - l.amount);
     });
     return { withdrawals: Object.values(map).filter(w => w.totalWithdrawn > 0) };

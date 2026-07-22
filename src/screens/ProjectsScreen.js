@@ -6,7 +6,7 @@ import {
 import {
   getAllProjects, addProject, getAllItems,
   allocateToProject, getProjectAllocations,
-  withdrawFromProject, getProjectWithdrawals, returnToStock, getLog,
+  withdrawFromProject, getProjectWithdrawals, returnToStock, undoWithdrawal, getLog,
   cancelProjectAllocation, updateProject,
   getMissingItems as apiGetMissingItems,
   addMissingItem as apiAddMissingItem,
@@ -185,6 +185,34 @@ export default function ProjectsScreen() {
       }
       setReleaseSuccess(`✓ ${toReturn.length} פריטים הוחזרו למחסן מ"${releaseProject.name}"`);
       setReleaseProject(null); setReleaseList([]);
+      load();
+    } catch (e) { setReleaseError(e.message); }
+    finally { setReleaseLoading(false); }
+  };
+
+  // ---- ביטול משיכה — הקבלן לא לקח בפועל, מחזיר את הפריט להקצאה (מוכן לפעם הבאה) ----
+  const handleUndoWithdrawal = async () => {
+    setReleaseError(''); setReleaseSuccess('');
+    const toUndo = releaseList.filter(i => i.selected && Number(i.returnQty) > 0);
+    if (toUndo.length === 0) { setReleaseError('בחר פריטים וציין כמות'); return; }
+    for (const i of toUndo) {
+      const q = Number(i.returnQty);
+      if (isNaN(q) || q <= 0) { setReleaseError(`כמות לא תקינה: ${i.name}`); return; }
+    }
+    setReleaseLoading(true);
+    try {
+      for (const i of toUndo) {
+        await undoWithdrawal({ code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name });
+      }
+      setReleaseSuccess(`✓ בוטלה משיכה של ${toUndo.length} פריטים — חזרו למצב "מוקצה" ל"${releaseProject.name}"`);
+      // רענון במקום — כדי שהפריט יעבור מיד לרשימת ההקצאות הפעילות
+      const withdrawn = await getProjectWithdrawals(releaseProject.name);
+      setReleaseList((withdrawn.withdrawals || []).map(w => ({
+        code: w.code, name: w.name, totalWithdrawn: w.totalWithdrawn,
+        returnQty: '', selected: false,
+      })));
+      const allocs = await getProjectAllocations(releaseProject.name);
+      setAllocatedList(allocs.allocations || []);
       load();
     } catch (e) { setReleaseError(e.message); }
     finally { setReleaseLoading(false); }
@@ -663,14 +691,23 @@ export default function ProjectsScreen() {
                   </View>
                 ))}
               </View>
-              <View style={{ paddingHorizontal: 12, paddingTop: 8 }}>
+              <View style={{ paddingHorizontal: 12, paddingTop: 8, gap: 8 }}>
                 <TouchableOpacity
                   style={[s.submitBtn, { backgroundColor: '#2E7D32' }]}
                   onPress={handleRelease}
                   disabled={releaseLoading}
                 >
                   <Text style={s.submitBtnText}>
-                    {releaseLoading ? 'מעבד...' : `↩ החזר למחסן (${releaseList.filter(i => i.selected && Number(i.returnQty) > 0).length} פריטים)`}
+                    {releaseLoading ? 'מעבד...' : `↩ החזר למחסן — זמין כללי (${releaseList.filter(i => i.selected && Number(i.returnQty) > 0).length} פריטים)`}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.submitBtn, { backgroundColor: '#F57C00' }]}
+                  onPress={handleUndoWithdrawal}
+                  disabled={releaseLoading}
+                >
+                  <Text style={s.submitBtnText}>
+                    {releaseLoading ? 'מעבד...' : `🔄 ביטול משיכה — חזרה להקצאה (${releaseList.filter(i => i.selected && Number(i.returnQty) > 0).length} פריטים)`}
                   </Text>
                 </TouchableOpacity>
               </View>

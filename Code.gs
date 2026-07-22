@@ -287,6 +287,23 @@ function route(p) {
     return { success: true };
   }
 
+  // ביטול משיכה — הקבלן בפועל לא לקח את הציוד. הופך את פעולת המשיכה:
+  // מחזיר לכמות הכוללת ומחזיר את ההקצאה לפרויקט (במקום לשחרר לזמין כללי).
+  if (action === 'undoWithdrawal') {
+    const items = getAllItems_();
+    const item = items.find(i => i.code == p.code);
+    if (!item) return { error: 'פריט לא נמצא' };
+    const amt = Number(p.qty);
+    item.totalQty += amt;
+    const alloc = item.allocations.find(a => a.project === p.projectName);
+    if (alloc) alloc.qty += amt;
+    else item.allocations.push({ project: p.projectName, qty: amt });
+    recalc_(item);
+    writeLog_('ביטול משיכה — ' + p.projectName, item, amt, p.note || '');
+    saveItems_(items);
+    return { success: true };
+  }
+
   if (action === 'getAllProjects') {
     return { projects: getAllProjects_() };
   }
@@ -408,7 +425,7 @@ function route(p) {
       if (!map[r[2]]) map[r[2]] = { code: r[2], name: r[3], totalWithdrawn: 0 };
       map[r[2]].totalWithdrawn += Number(r[4]);
     });
-    rows.filter(r => r[1] === 'שחרור — ' + p.projectName).forEach(r => {
+    rows.filter(r => r[1] === 'שחרור — ' + p.projectName || r[1] === 'ביטול משיכה — ' + p.projectName).forEach(r => {
       if (map[r[2]]) map[r[2]].totalWithdrawn = Math.max(0, map[r[2]].totalWithdrawn - Number(r[4]));
     });
     return { withdrawals: Object.values(map).filter(w => w.totalWithdrawn > 0) };
