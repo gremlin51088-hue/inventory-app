@@ -3,13 +3,25 @@
 // הדבק את כל הקוד הזה ב-Apps Script של ה-Google Sheet שלך
 // ============================================================
 
+// פעולות קריאה בלבד — לא נועלות את השרת, כדי שלא יצטרכו לחכות לכתיבות של מכשירים אחרים
+const READ_ACTIONS_ = {
+  getAllItemsLite: 1, getItemByCodeOrName: 1, getAllProjects: 1,
+  getProjectAllocations: 1, getLog: 1, getProjectWithdrawals: 1,
+  getSupplierMappings: 1, getSuppliers: 1, getMissingItems: 1,
+};
+
 function doGet(e) {
   try {
     const payloadStr = e.parameter.payload;
     if (!payloadStr) return jsonResponse({ error: 'No payload' });
     const payload = JSON.parse(payloadStr);
 
-    // מניעת כתיבות מקבילות
+    if (READ_ACTIONS_[payload.action]) {
+      initSheets();
+      return jsonResponse(route(payload));
+    }
+
+    // מניעת כתיבות מקבילות — רק לפעולות שבאמת כותבות
     const lock = LockService.getScriptLock();
     const gotLock = lock.tryLock(8000);
     if (!gotLock) return jsonResponse({ error: 'שרת עמוס, נסה שוב' });
@@ -79,15 +91,19 @@ function setNextCode(n) {
 }
 
 // ---- Items helpers ----
+// כל item כולל שדה פנימי _row (מספר השורה בגיליון) — כדי שאפשר יהיה לעדכן
+// רק את השורה שהשתנתה, במקום למחוק ולכתוב מחדש את כל הגיליון בכל פעולה.
 function getAllItems_() {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
   if (sh.getLastRow() <= 1) return [];
   // קרא כמה עמודות שיש, מינימום 6
   const numCols = Math.max(sh.getLastColumn(), 6);
   const data = sh.getRange(2, 1, sh.getLastRow() - 1, numCols).getValues();
-  return data
-    .filter(r => r[0] !== '' && r[0] !== null)
-    .map(r => ({
+  const result = [];
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (r[0] === '' || r[0] === null) continue;
+    result.push({
       code:         r[0],
       name:         r[1],
       location:     r[2] || '',
@@ -99,22 +115,35 @@ function getAllItems_() {
       altNames:     r[8] ? (() => { try { return JSON.parse(r[8]); } catch { return []; } })() : [],
       minQty:       Number(r[9]) || 0,
       qty:          Number(r[3]) || 0,
-    }));
+      _row:         i + 2,
+    });
+  }
+  return result;
 }
-function saveItems_(items) {
+// כתיבת שורה בודדת (עדכון פריט קיים) — מהיר בהרבה מכתיבת כל הגיליון
+function writeItemRow_(sh, rowNum, item) {
+  sh.getRange(rowNum, 1, 1, 10).setValues([[
+    item.code, item.name, item.location || '',
+    item.totalQty, item.available,
+    JSON.stringify(item.allocations || []),
+    item.supplierCode || '',
+    item.supplierName || '',
+    JSON.stringify(item.altNames || []),
+    item.minQty || 0,
+  ]]);
+}
+// הוספת פריט חדש — שורה אחת בסוף הגיליון
+function appendItemRow_(item) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
-  if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
-  if (items.length === 0) return;
-  const rows = items.map(i => [
-    i.code, i.name, i.location || '',
-    i.totalQty, i.available,
-    JSON.stringify(i.allocations || []),
-    i.supplierCode || '',
-    i.supplierName || '',
-    JSON.stringify(i.altNames || []),
-    i.minQty || 0,
+  sh.appendRow([
+    item.code, item.name, item.location || '',
+    item.totalQty, item.available,
+    JSON.stringify(item.allocations || []),
+    item.supplierCode || '',
+    item.supplierName || '',
+    JSON.stringify(item.altNames || []),
+    item.minQty || 0,
   ]);
-  sh.getRange(2, 1, rows.length, 10).setValues(rows);
 }
 
 // ---- Projects helpers ----
@@ -171,17 +200,17 @@ function renameMissingItemsProject_(oldName, newName) {
 }
 
 // ---- Log helpers ----
+// כותב לסוף הגיליון (מהיר — לא דוחף/מזיז שורות קיימות כמו insertRowBefore).
+// הסדר בגיליון הוא כרונולוגי (הישן למעלה, החדש למטה); קריאה חוזרת (getLog)
+// הופכת את הסדר כדי להציג הכי חדש קודם, כפי שהיה נהוג.
 function writeLog_(action, item, amount, note) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Log');
   const tz = Session.getScriptTimeZone();
   const time = Utilities.formatDate(new Date(), tz, 'dd/MM/yyyy HH:mm:ss');
-  sh.insertRowBefore(2);
-  sh.getRange(2, 1).setNumberFormat('@');  // אלץ טקסט — מונע המרה ל-Date
-  sh.getRange(2, 1, 1, 8).setValues([[
-    time, action, item.code, item.name,
-    amount, item.totalQty, item.available, note || '',
-  ]]);
-  if (sh.getLastRow() > 501) sh.deleteRows(502, sh.getLastRow() - 501);
+  sh.appendRow([time, action, item.code, item.name, amount, item.totalQty, item.available, note || '']);
+  const lastRow = sh.getLastRow();
+  sh.getRange(lastRow, 1).setNumberFormat('@');  // אלץ טקסט — מונע המרה ל-Date
+  if (lastRow > 501) sh.deleteRows(2, lastRow - 501);
 }
 
 // ---- Math helper ----
@@ -216,9 +245,8 @@ function route(p) {
         altNames: p.altNames || [],
         minQty: Number(p.minQty || 0),
       };
-      items.push(newItem);
       writeLog_('כניסה ראשונית', newItem, newItem.totalQty, 'פריט חדש');
-      saveItems_(items);
+      appendItemRow_(newItem);
       setNextCode(code + 1);
     }
     return { success: true };
@@ -226,12 +254,11 @@ function route(p) {
 
   if (action === 'deleteItem') {
     const items = getAllItems_();
-    const idx = items.findIndex(i => i.code == p.code);
-    if (idx === -1) return { error: 'פריט לא נמצא' };
-    const item = items[idx];
+    const item = items.find(i => i.code == p.code);
+    if (!item) return { error: 'פריט לא נמצא' };
     writeLog_('מחיקה', item, 0, 'פריט נמחק מהמערכת');
-    items.splice(idx, 1);
-    saveItems_(items);
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
+    sh.deleteRow(item._row);
     return { success: true };
   }
 
@@ -251,7 +278,8 @@ function route(p) {
     if (p.altNames !== undefined)     item.altNames     = p.altNames || [];
     if (oldQty !== item.totalQty)
       writeLog_('עריכה ידנית', item, item.totalQty - oldQty, 'שינוי כמות: ' + oldQty + '→' + item.totalQty);
-    saveItems_(items);
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
+    writeItemRow_(sh, item._row, item);
     return { success: true };
   }
 
@@ -267,7 +295,8 @@ function route(p) {
     } else if (p.stockAction === 'החזרה') item.totalQty += amt;
     recalc_(item);
     writeLog_(p.stockAction, item, amt, p.note);
-    saveItems_(items);
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
+    writeItemRow_(sh, item._row, item);
     return { success: true };
   }
 
@@ -283,7 +312,8 @@ function route(p) {
     item.allocations = item.allocations.filter(a => a.qty > 0);
     recalc_(item);
     writeLog_('משיכה — ' + p.projectName, item, amt, p.note);
-    saveItems_(items);
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
+    writeItemRow_(sh, item._row, item);
     return { success: true };
   }
 
@@ -300,7 +330,8 @@ function route(p) {
     else item.allocations.push({ project: p.projectName, qty: amt });
     recalc_(item);
     writeLog_('ביטול משיכה — ' + p.projectName, item, amt, p.note || '');
-    saveItems_(items);
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
+    writeItemRow_(sh, item._row, item);
     return { success: true };
   }
 
@@ -327,7 +358,8 @@ function route(p) {
     else item.allocations.push({ project: p.projectName, qty: Number(p.qty) });
     recalc_(item);
     writeLog_('הקצאה — ' + p.projectName, item, Number(p.qty), p.note);
-    saveItems_(items);
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
+    writeItemRow_(sh, item._row, item);
     return { success: true };
   }
 
@@ -338,7 +370,8 @@ function route(p) {
     item.totalQty += Number(p.qty);
     recalc_(item);
     writeLog_('שחרור — ' + p.projectName, item, Number(p.qty), p.note || '');
-    saveItems_(items);
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
+    writeItemRow_(sh, item._row, item);
     return { success: true };
   }
 
@@ -364,7 +397,8 @@ function route(p) {
     item.allocations = item.allocations.filter(a => a.qty > 0);
     recalc_(item);
     writeLog_('ביטול הקצאה — ' + p.projectName, item, qty, '');
-    saveItems_(items);
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
+    writeItemRow_(sh, item._row, item);
     return { success: true };
   }
 
@@ -376,10 +410,15 @@ function route(p) {
     proj.name = p.newName; proj.status = p.status;
     if (oldName !== p.newName) {
       const items = getAllItems_();
-      items.forEach(item => item.allocations.forEach(a => {
-        if (a.project === oldName) a.project = p.newName;
-      }));
-      saveItems_(items);
+      const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
+      // כותב רק את השורות של הפריטים שבאמת השתנו — לא את כל הגיליון
+      items.forEach(item => {
+        let changed = false;
+        item.allocations.forEach(a => {
+          if (a.project === oldName) { a.project = p.newName; changed = true; }
+        });
+        if (changed) writeItemRow_(sh, item._row, item);
+      });
       renameMissingItemsProject_(oldName, p.newName);
       // עדכון שמות ביומן
       try {
@@ -403,10 +442,11 @@ function route(p) {
   if (action === 'getLog') {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Log');
     if (sh.getLastRow() <= 1) return { log: [] };
-    const rows = sh.getRange(2, 1, Math.min(sh.getLastRow() - 1, 500), 8).getValues();
+    const rows = sh.getRange(2, 1, sh.getLastRow() - 1, 8).getValues();
+    rows.reverse(); // הגיליון שמור כרונולוגית (ישן→חדש) — הפוך להצגת הכי חדש קודם
     const tz = Session.getScriptTimeZone();
     return {
-      log: rows.filter(r => r[0] !== '').map(r => ({
+      log: rows.filter(r => r[0] !== '').slice(0, 500).map(r => ({
         time: r[0] instanceof Date
           ? Utilities.formatDate(r[0], tz, 'dd/MM/yyyy HH:mm:ss')
           : String(r[0]),
@@ -514,6 +554,7 @@ function fixImportBug() {
   }
 
   const data = logSh.getRange(2, 1, logSh.getLastRow() - 1, 8).getValues();
+  data.reverse(); // הפוך לסדר "הכי חדש קודם" — הלוגיקה למטה נבנתה על סדר כזה
   // עמודות: 0=time,1=action,2=code,3=name,4=amount,5=totalQty,6=available,7=note
 
   const corrections = {}; // code → amount to add back
@@ -546,6 +587,7 @@ function fixImportBug() {
 
   // תיקון בפועל
   const items = getAllItems_();
+  const itemsSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Items');
   let fixedCount = 0;
   for (const [code, addBack] of Object.entries(corrections)) {
     const item = items.find(i => String(i.code) === code);
@@ -556,9 +598,9 @@ function fixImportBug() {
     item.qty = item.totalQty;
     writeLog_('תיקון באג יבוא', item, addBack,
       `תיקון אוטומטי: ${before}→${item.totalQty}`);
+    writeItemRow_(itemsSh, item._row, item);
     fixedCount++;
   }
-  saveItems_(items);
 
   // דוח
   const lines = Object.entries(corrections).map(([code, qty]) => {
