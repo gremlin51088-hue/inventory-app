@@ -172,6 +172,20 @@ export default function ProjectsScreen() {
   const updateReturnQty = (code, val) => setReleaseList(l => l.map(i => i.code === code ? { ...i, returnQty: val } : i));
   const toggleReleaseSelected = (code) => setReleaseList(l => l.map(i => i.code === code ? { ...i, selected: !i.selected } : i));
 
+  // מרענן את שתי הרשימות של טאב ההחזרה מהשרת — תמיד קריאה טרייה,
+  // כדי שהרשימה תשקף בדיוק את מה שקרה גם אם חלק מהפריטים נכשלו
+  const refreshReleaseData = async () => {
+    try {
+      const withdrawn = await getProjectWithdrawals(releaseProject.name);
+      setReleaseList((withdrawn.withdrawals || []).map(w => ({
+        code: w.code, name: w.name, totalWithdrawn: w.totalWithdrawn,
+        returnQty: String(w.totalWithdrawn), selected: false,
+      })));
+      const allocs = await getProjectAllocations(releaseProject.name);
+      setAllocatedList(allocs.allocations || []);
+    } catch {}
+  };
+
   const handleRelease = async () => {
     setReleaseError(''); setReleaseSuccess('');
     const toReturn = releaseList.filter(i => i.selected && Number(i.returnQty) > 0);
@@ -181,15 +195,29 @@ export default function ProjectsScreen() {
       if (isNaN(q) || q <= 0) { setReleaseError(`כמות לא תקינה: ${i.name}`); return; }
     }
     setReleaseLoading(true);
-    try {
-      for (const i of toReturn) {
+    // כל פריט בנפרד — אם אחד נכשל, לא מאבדים את ההצלחות של האחרים,
+    // ותמיד מרעננים מהשרת בסוף כדי לא להישאר עם רשימה מקומית שמאפשרת ביצוע כפול
+    const succeeded = [];
+    const failed = [];
+    for (const i of toReturn) {
+      try {
         await callWithRetry(() => returnToStock({ code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name }));
+        succeeded.push(i.code);
+      } catch (e) {
+        failed.push({ name: i.name, message: e.message });
       }
-      setReleaseSuccess(`✓ ${toReturn.length} פריטים הוחזרו למחסן מ"${releaseProject.name}"`);
-      setReleaseProject(null); setReleaseList([]);
-      load();
-    } catch (e) { setReleaseError(e.message); }
-    finally { setReleaseLoading(false); }
+    }
+    await refreshReleaseData();
+    if (failed.length === 0) {
+      setReleaseSuccess(`✓ ${succeeded.length} פריטים הוחזרו למחסן מ"${releaseProject.name}"`);
+    } else {
+      setReleaseError(
+        `בוצעו ${succeeded.length} מתוך ${toReturn.length}. נכשלו: ` +
+        failed.map(f => `${f.name} (${f.message})`).join(' | ')
+      );
+    }
+    load();
+    setReleaseLoading(false);
   };
 
   // ---- ביטול משיכה — הקבלן לא לקח בפועל, מחזיר את הפריט להקצאה (מוכן לפעם הבאה) ----
@@ -202,22 +230,27 @@ export default function ProjectsScreen() {
       if (isNaN(q) || q <= 0) { setReleaseError(`כמות לא תקינה: ${i.name}`); return; }
     }
     setReleaseLoading(true);
-    try {
-      for (const i of toUndo) {
+    const succeeded = [];
+    const failed = [];
+    for (const i of toUndo) {
+      try {
         await callWithRetry(() => undoWithdrawal({ code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name }));
+        succeeded.push(i.code);
+      } catch (e) {
+        failed.push({ name: i.name, message: e.message });
       }
-      setReleaseSuccess(`✓ בוטלה משיכה של ${toUndo.length} פריטים — חזרו למצב "מוקצה" ל"${releaseProject.name}"`);
-      // רענון במקום — כדי שהפריט יעבור מיד לרשימת ההקצאות הפעילות
-      const withdrawn = await getProjectWithdrawals(releaseProject.name);
-      setReleaseList((withdrawn.withdrawals || []).map(w => ({
-        code: w.code, name: w.name, totalWithdrawn: w.totalWithdrawn,
-        returnQty: String(w.totalWithdrawn), selected: false,
-      })));
-      const allocs = await getProjectAllocations(releaseProject.name);
-      setAllocatedList(allocs.allocations || []);
-      load();
-    } catch (e) { setReleaseError(e.message); }
-    finally { setReleaseLoading(false); }
+    }
+    await refreshReleaseData();
+    if (failed.length === 0) {
+      setReleaseSuccess(`✓ בוטלה משיכה של ${succeeded.length} פריטים — חזרו למצב "מוקצה" ל"${releaseProject.name}"`);
+    } else {
+      setReleaseError(
+        `בוצעו ${succeeded.length} מתוך ${toUndo.length}. נכשלו: ` +
+        failed.map(f => `${f.name} (${f.message})`).join(' | ')
+      );
+    }
+    load();
+    setReleaseLoading(false);
   };
 
   const exportWithdrawPDF = () => {
@@ -268,9 +301,9 @@ export default function ProjectsScreen() {
     window.open(url, '_blank');
   };
 
-  const toggleSelectAll = (val) => setWithdrawList(wl => wl.map(i => ({ ...i, selected: val })));
+  const toggleSelectAll = (val) => setWithdrawList(wl => wl.map(i => i.done ? i : { ...i, selected: val }));
   const updateActualQty = (code, val) => setWithdrawList(wl => wl.map(i => i.code === code ? { ...i, actualQty: val } : i));
-  const toggleSelected = (code) => setWithdrawList(wl => wl.map(i => i.code === code ? { ...i, selected: !i.selected } : i));
+  const toggleSelected = (code) => setWithdrawList(wl => wl.map(i => i.code === code && !i.done ? { ...i, selected: !i.selected } : i));
 
   const handleWithdraw = async () => {
     setWithdrawError(''); setWithdrawSuccess('');
@@ -280,7 +313,7 @@ export default function ProjectsScreen() {
       return;
     }
     setWithdrawNoteError(false);
-    const toWithdraw = withdrawList.filter(i => i.selected);
+    const toWithdraw = withdrawList.filter(i => i.selected && !i.done);
     if (toWithdraw.length === 0) { setWithdrawError('לא נבחרו פריטים'); return; }
     for (const i of toWithdraw) {
       const q = Number(i.actualQty);
@@ -292,20 +325,38 @@ export default function ProjectsScreen() {
       }
     }
     setWithdrawLoading(true);
-    try {
-      for (const i of toWithdraw) {
+    // כל פריט מטופל בנפרד — כדי שאם אחד נכשל, לא נאבד את ההצלחות של האחרים,
+    // ובעיקר: כדי שלחיצה חוזרת על "בצע משיכה" לא תבצע שוב פריטים שכבר הצליחו
+    // (וכך תגרום למשיכה כפולה מהמלאי, כמו שקרה עכשיו).
+    const succeededCodes = [];
+    const failed = [];
+    for (const i of toWithdraw) {
+      try {
         await callWithRetry(() => withdrawFromProject({
           code: i.code, projectName: withdrawProject.name,
           qty: Number(i.actualQty), note: withdrawNote.trim(),
         }));
+        succeededCodes.push(i.code);
+      } catch (e) {
+        failed.push({ name: i.name, message: e.message });
       }
-      setWithdrawSuccess(`✓ בוצעה משיכה של ${toWithdraw.length} פריטים מפרויקט "${withdrawProject.name}" — ${withdrawNote.trim()}`);
+    }
+    setWithdrawList(list => list.map(x =>
+      succeededCodes.includes(x.code) ? { ...x, done: true, selected: false } : x
+    ));
+    if (failed.length === 0) {
+      setWithdrawSuccess(`✓ בוצעה משיכה של ${succeededCodes.length} פריטים מפרויקט "${withdrawProject.name}" — ${withdrawNote.trim()}`);
       // לא מנקים את הרשימה — כדי שאפשר יהיה לייצא אותה גם אחרי הביצוע
       // (למשל אם צריך לתקן כמות בפועל לפני ההדפסה)
       setWithdrawDone(true);
-      load();
-    } catch (e) { setWithdrawError(e.message); }
-    finally { setWithdrawLoading(false); }
+    } else {
+      setWithdrawError(
+        `בוצעו ${succeededCodes.length} מתוך ${toWithdraw.length}. נכשלו: ` +
+        failed.map(f => `${f.name} (${f.message})`).join(' | ')
+      );
+    }
+    load();
+    setWithdrawLoading(false);
   };
 
   // ---- טעינת הקצאות לפרויקט הנבחר ----
@@ -570,13 +621,19 @@ export default function ProjectsScreen() {
                 keyExtractor={i => String(i.code)}
                 contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
                 renderItem={({ item }) => (
-                  <View style={[s.withdrawCard, item.selected && s.withdrawCardSelected]}>
-                    <TouchableOpacity style={s.withdrawRow} onPress={() => toggleSelected(item.code)}>
-                      <View style={[s.checkbox, item.selected && s.checkboxSelected]}>
-                        {item.selected && <Text style={s.checkmark}>✓</Text>}
-                      </View>
+                  <View style={[s.withdrawCard, item.selected && s.withdrawCardSelected, item.done && { opacity: 0.55 }]}>
+                    <TouchableOpacity style={s.withdrawRow} onPress={() => toggleSelected(item.code)} disabled={item.done}>
+                      {item.done ? (
+                        <View style={[s.checkbox, { backgroundColor: '#2E7D32', borderColor: '#2E7D32' }]}>
+                          <Text style={s.checkmark}>✓</Text>
+                        </View>
+                      ) : (
+                        <View style={[s.checkbox, item.selected && s.checkboxSelected]}>
+                          {item.selected && <Text style={s.checkmark}>✓</Text>}
+                        </View>
+                      )}
                       <View>
-                        <Text style={s.withdrawName}>{item.name}</Text>
+                        <Text style={s.withdrawName}>{item.name}{item.done ? '  •  בוצע' : ''}</Text>
                         {item.location ? <Text style={s.withdrawLocation}>📍 {item.location}</Text> : null}
                       </View>
                     </TouchableOpacity>
@@ -599,7 +656,7 @@ export default function ProjectsScreen() {
                           onChangeText={v => updateActualQty(item.code, v)}
                           keyboardType="numeric"
                           textAlign="center"
-                          editable={item.selected}
+                          editable={item.selected && !item.done}
                         />
                       </View>
                     </View>
