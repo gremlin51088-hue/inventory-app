@@ -12,6 +12,7 @@ import {
   addMissingItem as apiAddMissingItem,
   removeMissingItem as apiRemoveMissingItem,
   callWithRetry,
+  batchOperations,
 } from '../api';
 import { inventoryEvents } from '../storage';
 
@@ -195,17 +196,24 @@ export default function ProjectsScreen() {
       if (isNaN(q) || q <= 0) { setReleaseError(`כמות לא תקינה: ${i.name}`); return; }
     }
     setReleaseLoading(true);
-    // כל פריט בנפרד — אם אחד נכשל, לא מאבדים את ההצלחות של האחרים,
-    // ותמיד מרעננים מהשרת בסוף כדי לא להישאר עם רשימה מקומית שמאפשרת ביצוע כפול
+    // כל הפריטים בבקשת רשת אחת (batch) במקום אחת לכל פריט — שדרוג ביצועים.
+    // תמיד מרעננים מהשרת בסוף כדי לא להישאר עם רשימה מקומית שמאפשרת ביצוע כפול
     const succeeded = [];
     const failed = [];
-    for (const i of toReturn) {
-      try {
-        await callWithRetry(() => returnToStock({ code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name }));
-        succeeded.push(i.code);
-      } catch (e) {
-        failed.push({ name: i.name, message: e.message });
-      }
+    try {
+      const operations = toReturn.map(i => ({
+        action: 'returnToStock', code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name,
+      }));
+      const { results } = await callWithRetry(() => batchOperations(operations));
+      toReturn.forEach((i, idx) => {
+        const r = results?.[idx];
+        if (r && r.success) succeeded.push(i.code);
+        else failed.push({ name: i.name, message: r?.error || 'שגיאה לא ידועה' });
+      });
+    } catch (e) {
+      setReleaseError('שגיאת שרת: ' + e.message);
+      setReleaseLoading(false);
+      return;
     }
     await refreshReleaseData();
     if (failed.length === 0) {
@@ -232,13 +240,20 @@ export default function ProjectsScreen() {
     setReleaseLoading(true);
     const succeeded = [];
     const failed = [];
-    for (const i of toUndo) {
-      try {
-        await callWithRetry(() => undoWithdrawal({ code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name }));
-        succeeded.push(i.code);
-      } catch (e) {
-        failed.push({ name: i.name, message: e.message });
-      }
+    try {
+      const operations = toUndo.map(i => ({
+        action: 'undoWithdrawal', code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name,
+      }));
+      const { results } = await callWithRetry(() => batchOperations(operations));
+      toUndo.forEach((i, idx) => {
+        const r = results?.[idx];
+        if (r && r.success) succeeded.push(i.code);
+        else failed.push({ name: i.name, message: r?.error || 'שגיאה לא ידועה' });
+      });
+    } catch (e) {
+      setReleaseError('שגיאת שרת: ' + e.message);
+      setReleaseLoading(false);
+      return;
     }
     await refreshReleaseData();
     if (failed.length === 0) {
@@ -325,21 +340,27 @@ export default function ProjectsScreen() {
       }
     }
     setWithdrawLoading(true);
-    // כל פריט מטופל בנפרד — כדי שאם אחד נכשל, לא נאבד את ההצלחות של האחרים,
-    // ובעיקר: כדי שלחיצה חוזרת על "בצע משיכה" לא תבצע שוב פריטים שכבר הצליחו
-    // (וכך תגרום למשיכה כפולה מהמלאי, כמו שקרה עכשיו).
+    // כל 35 הפריטים נשלחים בבקשת רשת אחת (batch) במקום 35 בקשות נפרדות —
+    // זה מה שגרם לאיטיות. השרת עדיין מטפל בכל פריט בנפרד מבפנים, כך שאם
+    // אחד נכשל, לא נאבד את ההצלחות של האחרים. לחיצה חוזרת על "בצע משיכה"
+    // תבצע רק את מה שעדיין לא הצליח (בזכות "done" למטה).
     const succeededCodes = [];
     const failed = [];
-    for (const i of toWithdraw) {
-      try {
-        await callWithRetry(() => withdrawFromProject({
-          code: i.code, projectName: withdrawProject.name,
-          qty: Number(i.actualQty), note: withdrawNote.trim(),
-        }));
-        succeededCodes.push(i.code);
-      } catch (e) {
-        failed.push({ name: i.name, message: e.message });
-      }
+    try {
+      const operations = toWithdraw.map(i => ({
+        action: 'withdrawFromProject', code: i.code, projectName: withdrawProject.name,
+        qty: Number(i.actualQty), note: withdrawNote.trim(),
+      }));
+      const { results } = await callWithRetry(() => batchOperations(operations));
+      toWithdraw.forEach((i, idx) => {
+        const r = results?.[idx];
+        if (r && r.success) succeededCodes.push(i.code);
+        else failed.push({ name: i.name, message: r?.error || 'שגיאה לא ידועה' });
+      });
+    } catch (e) {
+      setWithdrawError('שגיאת שרת: ' + e.message);
+      setWithdrawLoading(false);
+      return;
     }
     setWithdrawList(list => list.map(x =>
       succeededCodes.includes(x.code) ? { ...x, done: true, selected: false } : x
@@ -424,18 +445,32 @@ export default function ProjectsScreen() {
 
     setLoading(true);
     try {
-      await allocateToProject({ code: selItem.code, projectName: selProject.name, qty: Number(qty), note });
+      const qtyNum = Number(qty);
+      await allocateToProject({ code: selItem.code, projectName: selProject.name, qty: qtyNum, note });
       Alert.alert('✓ הצלחה', `הוקצה: ${qty} יח' ${selItem.name} → ${selProject.name}`);
       setQty(''); setNote('');
-      const refreshed = await getAllItems();
-      const updatedItems = refreshed.items || [];
-      setItems(updatedItems);
-      if (selItem) {
-        const updated = updatedItems.find(i => i.code === selItem.code);
-        if (updated) setSelItem(updated);
-      }
-      await loadSelProjectAllocs(selProject);
-    } catch (e) { Alert.alert('שגיאה', e.message); }
+      // עדכון מקומי במקום לרענן הכל מהשרת (getAllItems + getProjectAllocations) —
+      // אותן שתי קריאות רשת מיותרות היו הגורם העיקרי לאיטיות בהקצאה.
+      // אנחנו כבר יודעים בדיוק מה השתנה, אז מעדכנים את המצב בזיכרון ישירות.
+      setItems(prev => prev.map(i =>
+        i.code === selItem.code
+          ? { ...i, available: (i.available ?? i.qty ?? 0) - qtyNum }
+          : i
+      ));
+      setSelItem(prev => (prev && prev.code === selItem.code)
+        ? { ...prev, available: (prev.available ?? prev.qty ?? 0) - qtyNum }
+        : prev);
+      setSelProjectAllocs(prev => {
+        const idx = prev.findIndex(a => a.code === selItem.code);
+        if (idx === -1) {
+          return [...prev, { code: selItem.code, name: selItem.name, qty: qtyNum, location: selItem.location || '' }];
+        }
+        return prev.map((a, i) => i === idx ? { ...a, qty: a.qty + qtyNum } : a);
+      });
+    } catch (e) {
+      Alert.alert('שגיאה', e.message);
+      load(); // אם קרתה שגיאה, נטען מחדש מהשרת ליתר ביטחון שהמצב המקומי לא סוטה
+    }
     finally { setLoading(false); }
   };
 

@@ -5,7 +5,7 @@ import {
   I18nManager,
 } from 'react-native';
 import * as XLSX from 'xlsx';
-import { getAllItems, addOrUpdateItem, editItem, deleteItem, getItem, moveStock, getLog } from '../api';
+import { getAllItems, addOrUpdateItem, editItem, deleteItem, getItem, moveStock, getLog, batchOperations } from '../api';
 import { inventoryEvents } from '../storage';
 
 I18nManager.allowRTL(true);
@@ -324,43 +324,40 @@ export default function ItemsScreen() {
       return;
     }
     setXlsxLoading(true);
-    let done = 0;
-    const total = matched.length + toAdd.length;
+    setXlsxProgress('מבצע יבוא...');
 
-    // עדכון פריטים קיימים
-    for (const row of matched) {
-      try {
-        await moveStock({
-          code: row.matchedItem.code,
-          action: 'כניסה',
-          amount: row.כמות,
-          note: `יבוא תעודה — ${row.מקט}`,
-        });
-        done++;
-        setXlsxProgress(`מעדכן... ${done}/${total}`);
-      } catch {}
-    }
+    // כל השורות נשלחות בבקשת רשת אחת (batch) במקום בקשה נפרדת לכל שורה —
+    // זה מה שגרם ליבוא ארוך להיות איטי מאוד (עשרות בקשות רצופות).
+    const operations = [
+      ...matched.map(row => ({
+        action: 'moveStock', code: row.matchedItem.code, stockAction: 'כניסה',
+        amount: row.כמות, note: `יבוא תעודה — ${row.מקט}`,
+      })),
+      ...toAdd.map(row => ({
+        action: 'addOrUpdateItem', name: row.newItemName, location: row.newItemLocation || '',
+        qty: row.כמות, supplierCode: row.מקט, supplierName: row.תאור,
+      })),
+    ];
 
-    // הוספת פריטים חדשים
-    for (const row of toAdd) {
-      try {
-        await addOrUpdateItem({
-          name: row.newItemName,
-          location: row.newItemLocation || '',
-          qty: row.כמות,
-          supplierCode: row.מקט,
-          supplierName: row.תאור,
-        });
-        done++;
-        setXlsxProgress(`מוסיף פריט חדש... ${done}/${total}`);
-      } catch {}
+    let succeededCount = 0;
+    let failedCount = 0;
+    try {
+      const { results } = await batchOperations(operations);
+      (results || []).forEach(r => { r && r.success ? succeededCount++ : failedCount++; });
+    } catch (e) {
+      setXlsxLoading(false);
+      setXlsxError('שגיאת שרת ביבוא: ' + e.message);
+      return;
     }
 
     const fresh = await getAllItems();
     setItems(fresh.items || []);
     setXlsxLoading(false);
     setXlsxDone(true);
-    setXlsxProgress(`✓ עודכנו ${matched.length} פריטים, נוספו ${toAdd.length} חדשים`);
+    setXlsxProgress(
+      `✓ עודכנו ${matched.length} פריטים, נוספו ${toAdd.length} חדשים` +
+      (failedCount > 0 ? ` — ⚠️ ${failedCount} נכשלו` : '')
+    );
   };
 
   // ── Render ──

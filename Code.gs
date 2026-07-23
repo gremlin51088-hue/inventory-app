@@ -497,6 +497,22 @@ function route(p) {
     return { success: true };
   }
 
+  // ביצוע כמה פעולות ברצף בתוך ריצה אחת של השרת — במקום שהאפליקציה תשלח
+  // בקשת רשת נפרדת לכל פריט (למשל 35 בקשות נפרדות למשיכה של 35 פריטים).
+  // כל תת-פעולה עוברת דרך אותו route() הרגיל, כך שההתנהגות זהה לחלוטין.
+  if (action === 'batch') {
+    const results = (p.operations || []).map(op => {
+      try {
+        const r = route(op) || {};
+        if (r.error) return { success: false, error: r.error, code: op.code };
+        return Object.assign({ success: true, code: op.code }, r);
+      } catch (e) {
+        return { success: false, error: e.toString(), code: op.code };
+      }
+    });
+    return { results };
+  }
+
   return {};
 }
 

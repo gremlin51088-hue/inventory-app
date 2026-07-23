@@ -100,6 +100,21 @@ export async function callWithRetry(fn, retries = 1, delayMs = 600) {
 
 async function handleDemo(payload) {
   const { action } = payload;
+
+  // ביצוע כמה פעולות ברצף בקריאה אחת (מצב דמו — מדמה את התנהגות ה-batch של השרת האמיתי)
+  if (action === 'batch') {
+    const results = [];
+    for (const op of (payload.operations || [])) {
+      try {
+        const r = await handleDemo(op);
+        results.push(r && r.error ? { success: false, error: r.error, code: op.code } : Object.assign({ success: true, code: op.code }, r));
+      } catch (e) {
+        results.push({ success: false, error: e.message, code: op.code });
+      }
+    }
+    return { results };
+  }
+
   const state = await loadState();
   let { items, projects, nextCode } = state;
 
@@ -331,6 +346,12 @@ export function cancelProjectAllocation({ code, projectName, qty }) { return cal
 export function updateProject({ oldName, newName, status }) { return call({ action: 'editProject', oldName, newName, status }); }
 export function returnToStock({ code, qty, projectName, note = '' }) { return call({ action: 'returnToStock', code, qty, projectName, note }); }
 export function undoWithdrawal({ code, qty, projectName, note = '' }) { return call({ action: 'undoWithdrawal', code, qty, projectName, note }); }
+
+// מריץ כמה פעולות בבקשת רשת אחת במקום אחת לכל פריט — לביצועים בפעולות batch
+// (משיכה/החזרה/יבוא של הרבה פריטים בבת אחת). operations הוא מערך של payloads,
+// לדוגמה: { action: 'withdrawFromProject', code, projectName, qty, note }.
+// מחזיר { results: [{ success, error?, code, ... }] } באותו סדר של operations.
+export function batchOperations(operations) { return call({ action: 'batch', operations }); }
 
 export function getMissingItems(projectName) { return call({ action: 'getMissingItems', projectName }); }
 export function addMissingItem({ projectName, name, qty }) { return call({ action: 'addMissingItem', projectName, name, qty }); }
