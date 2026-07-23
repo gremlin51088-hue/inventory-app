@@ -11,6 +11,7 @@ import {
   getMissingItems as apiGetMissingItems,
   addMissingItem as apiAddMissingItem,
   removeMissingItem as apiRemoveMissingItem,
+  callWithRetry,
 } from '../api';
 import { inventoryEvents } from '../storage';
 
@@ -41,6 +42,7 @@ export default function ProjectsScreen() {
   const [withdrawLoading, setWithdrawLoading] = useState(false);
   const [withdrawError, setWithdrawError] = useState('');
   const [withdrawSuccess, setWithdrawSuccess] = useState('');
+  const [withdrawDone, setWithdrawDone] = useState(false); // בוצעה משיכה — עדיין אפשר לייצא, אבל לא לבצע שוב
   const [pickWithdrawProjectModal, setPickWithdrawProjectModal] = useState(false);
   const [withdrawNote, setWithdrawNote] = useState('');
   const [withdrawNoteError, setWithdrawNoteError] = useState(false);
@@ -111,7 +113,7 @@ export default function ProjectsScreen() {
   const handleSelectWithdrawProject = async (project) => {
     setPickWithdrawProjectModal(false);
     setWithdrawProject(project);
-    setWithdrawError(''); setWithdrawSuccess('');
+    setWithdrawError(''); setWithdrawSuccess(''); setWithdrawDone(false);
     setWithdrawNote(''); setWithdrawNoteError(false);
     try {
       const [allocData, itemsData] = await Promise.all([
@@ -181,7 +183,7 @@ export default function ProjectsScreen() {
     setReleaseLoading(true);
     try {
       for (const i of toReturn) {
-        await returnToStock({ code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name });
+        await callWithRetry(() => returnToStock({ code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name }));
       }
       setReleaseSuccess(`✓ ${toReturn.length} פריטים הוחזרו למחסן מ"${releaseProject.name}"`);
       setReleaseProject(null); setReleaseList([]);
@@ -202,7 +204,7 @@ export default function ProjectsScreen() {
     setReleaseLoading(true);
     try {
       for (const i of toUndo) {
-        await undoWithdrawal({ code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name });
+        await callWithRetry(() => undoWithdrawal({ code: i.code, qty: Number(i.returnQty), projectName: releaseProject.name }));
       }
       setReleaseSuccess(`✓ בוטלה משיכה של ${toUndo.length} פריטים — חזרו למצב "מוקצה" ל"${releaseProject.name}"`);
       // רענון במקום — כדי שהפריט יעבור מיד לרשימת ההקצאות הפעילות
@@ -227,7 +229,7 @@ export default function ProjectsScreen() {
         <td>${i.location || '—'}</td>
         <td>${i.allocatedQty}</td>
         <td>${i.availableInStock}</td>
-        <td style="width:60px"></td>
+        <td style="width:60px">${i.actualQty || ''}</td>
       </tr>`).join('');
     const html = `<!DOCTYPE html>
 <html dir="rtl" lang="he">
@@ -292,10 +294,15 @@ export default function ProjectsScreen() {
     setWithdrawLoading(true);
     try {
       for (const i of toWithdraw) {
-        await withdrawFromProject({ code: i.code, projectName: withdrawProject.name, qty: Number(i.actualQty), note: withdrawNote.trim() });
+        await callWithRetry(() => withdrawFromProject({
+          code: i.code, projectName: withdrawProject.name,
+          qty: Number(i.actualQty), note: withdrawNote.trim(),
+        }));
       }
       setWithdrawSuccess(`✓ בוצעה משיכה של ${toWithdraw.length} פריטים מפרויקט "${withdrawProject.name}" — ${withdrawNote.trim()}`);
-      setWithdrawProject(null); setWithdrawList([]); setWithdrawNote('');
+      // לא מנקים את הרשימה — כדי שאפשר יהיה לייצא אותה גם אחרי הביצוע
+      // (למשל אם צריך לתקן כמות בפועל לפני ההדפסה)
+      setWithdrawDone(true);
       load();
     } catch (e) { setWithdrawError(e.message); }
     finally { setWithdrawLoading(false); }
@@ -526,7 +533,7 @@ export default function ProjectsScreen() {
             {withdrawProject && (
               <TouchableOpacity style={s.clearBtn} onPress={() => {
                 setWithdrawProject(null); setWithdrawList([]);
-                setWithdrawError(''); setWithdrawSuccess(''); setWithdrawNote('');
+                setWithdrawError(''); setWithdrawSuccess(''); setWithdrawNote(''); setWithdrawDone(false);
               }}>
                 <Text style={s.clearBtnText}>✕</Text>
               </TouchableOpacity>
@@ -604,17 +611,23 @@ export default function ProjectsScreen() {
                   style={[s.submitBtn, { backgroundColor: '#1565C0', marginBottom: 8 }]}
                   onPress={exportWithdrawPDF}
                 >
-                  <Text style={s.submitBtnText}>📄 ייצא רשימה</Text>
+                  <Text style={s.submitBtnText}>📄 ייצא רשימה{withdrawDone ? ' (מעודכן)' : ''}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.submitBtn, { backgroundColor: '#C62828', flex: 1 }]}
-                  onPress={handleWithdraw}
-                  disabled={withdrawLoading}
-                >
-                  <Text style={s.submitBtnText}>
-                    {withdrawLoading ? 'מבצע משיכה...' : `⬇ בצע משיכה (${withdrawList.filter(i => i.selected).length} פריטים)`}
+                {withdrawDone ? (
+                  <Text style={{ textAlign: 'center', color: '#2E7D32', fontWeight: '700', fontSize: 14 }}>
+                    ✓ המשיכה בוצעה. אפשר לתקן כמויות ולייצא שוב, או ללחוץ ✕ למשיכה חדשה.
                   </Text>
-                </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[s.submitBtn, { backgroundColor: '#C62828', flex: 1 }]}
+                    onPress={handleWithdraw}
+                    disabled={withdrawLoading}
+                  >
+                    <Text style={s.submitBtnText}>
+                      {withdrawLoading ? 'מבצע משיכה...' : `⬇ בצע משיכה (${withdrawList.filter(i => i.selected).length} פריטים)`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </>
           )}

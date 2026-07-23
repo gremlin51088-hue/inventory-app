@@ -68,12 +68,32 @@ async function call(payload) {
       body: JSON.stringify(payload),
     });
     const text = await res.text();
-    if (text.trim().startsWith('<')) throw new Error('שגיאת שרת — בדוק חיבור Apps Script');
-    const data = JSON.parse(text);
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // השרת החזיר תגובה שאינה JSON תקין (למשל שגיאה זמנית של Apps Script) —
+      // הודעה ברורה במקום שגיאת parsing גולמית
+      throw new Error('שגיאת שרת זמנית, נסה שוב (' + text.slice(0, 80) + ')');
+    }
     if (data.error) throw new Error(data.error);
     return data;
   } catch (e) {
     console.error('API error:', e);
+    throw e;
+  }
+}
+
+// עוזר לחזור על קריאה שנכשלה — שימושי בלולאות של הרבה פעולות ברצף,
+// כדי לא לאבד את כל הפעולה בגלל תקלה חד-פעמית וחולפת בשרת
+export async function callWithRetry(fn, retries = 1, delayMs = 600) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, delayMs));
+      return callWithRetry(fn, retries - 1, delayMs);
+    }
     throw e;
   }
 }
